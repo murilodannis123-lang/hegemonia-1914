@@ -98,7 +98,7 @@ export class MapView {
       g.setLineDash([8 / k, 6 / k]); g.strokeStyle = 'rgba(255,240,200,.7)'; g.lineWidth = 1.5 / k; g.beginPath(); g.arc(b.x, b.y, r, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
     }
     this.drawLabels(S, vis);
-    this.drawStacks(S, vis, frac, sel);
+    if (!this.noStacks) this.drawStacks(S, vis, frac, sel);
     // prévia de rota
     if (this.preview && this.preview.length > 1) {
       g.setLineDash([10 / k, 7 / k]); g.strokeStyle = 'rgba(255,230,140,.95)'; g.lineWidth = 2.5 / k; g.beginPath();

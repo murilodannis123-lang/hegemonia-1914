@@ -260,8 +260,18 @@ input[type=range] { accent-color: var(--accent); }
   .qbar > div:last-child { grid-column: span 2; border-top: 1px solid var(--line); }
   .news .top { grid-template-columns: 1fr; }
   .news .mast .title { font-size: 34px; }
-  .setup { grid-template-columns: 1fr; grid-template-rows: 38vh 1fr; }
   .grid2 { grid-template-columns: 1fr; }
   .logo { font-size: 46px; } .logo span { font-size: 56px; }
   #toasts { top: auto; bottom: calc(60px + var(--safe-b)); }
 }
+
+@media (max-width: 760px) {
+  .setup { grid-template-columns: 1fr; grid-template-rows: 38vh minmax(0, 1fr); height: 100dvh; }
+}
+@media (max-height: 500px) {
+  .setup { height: 100dvh; grid-template-columns: 1fr 320px; }
+  .setup .opts { overflow-y: auto; }
+  .setup .natlist { flex: none; overflow: visible; }
+}
+.setup .mapside { overflow: hidden; height: 100%; }
+.setup .mapside .hint { max-width: 90%; text-align: center; }

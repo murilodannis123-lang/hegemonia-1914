@@ -124,7 +124,7 @@ function setupMenu() {
   const provCount = {}; M.provinces.forEach(p => provCount[p.owner] = (provCount[p.owner] || 0) + 1);
   const drawList = () => { list.innerHTML = NATIONS.slice().sort((a, b) => a.name.localeCompare(b.name)).map(n => `<div class="natrow ${n.id === o.player ? 'on' : ''}" data-n="${n.id}">${flagSVG(n.id)}${esc(n.name)}<small>${provCount[n.id]} prov.</small></div>`).join(''); };
   drawList();
-  const cv = m.querySelector('#pick'); const pv = new MapView(cv, M);
+  const cv = m.querySelector('#pick'); const pv = new MapView(cv, M); pv.noStacks = true;
   const draw = () => { preview.opts.player = o.player; pv.resize(); pv.mode = 'padrao'; pv.k = pv.minK; pv.clamp(); pv.draw(preview, computeVision(preview, M, o.player), 0); };
   setTimeout(draw, 50); window.addEventListener('resize', draw, { once: true });
   cv.onclick = e => { const r = cv.getBoundingClientRect(); const [x, y] = pv.toWorld(e.clientX - r.left, e.clientY - r.top); const n = M.nodeAt(x, y); if (n >= 0 && n < M.nL) { o.player = M.provinces[n].owner; drawList(); draw(); list.querySelector('.on')?.scrollIntoView({ block: 'nearest' }); } };

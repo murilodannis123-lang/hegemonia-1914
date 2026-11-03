@@ -1,0 +1,10 @@
+import { createRequire } from 'module'; const { chromium } = createRequire(import.meta.url)('playwright');
+import http from 'http'; import fs from 'fs'; import path from 'path';
+const root = process.cwd();
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
+const srv = http.createServer((q, r) => { const f = path.join(root, decodeURIComponent(q.url.split('?')[0])); fs.readFile(f, (e, d) => { if (e) { r.writeHead(404); r.end(); return; } r.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream' }); r.end(d); }); }).listen(0);
+const port = srv.address().port;
+const b = await chromium.launch(); const pg = await b.newPage({ viewport: { width: 2500, height: 2000 } });
+pg.on('console', m => console.log('console:', m.text())); pg.on('pageerror', e => console.log('ERR', e.message));
+await pg.goto(`http://localhost:${port}/${process.argv[2]}`); await pg.waitForFunction(() => document.title === 'done', null, { timeout: 30000 });
+await pg.screenshot({ path: process.argv[3], fullPage: true }); await b.close(); srv.close();

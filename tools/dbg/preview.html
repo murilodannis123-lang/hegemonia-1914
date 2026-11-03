@@ -1,0 +1,13 @@
+<html><body style="margin:0;background:#222"><canvas id=c></canvas><script type=module>
+import {NATIONS} from '../../src/data/nations.js';
+const col=Object.fromEntries(NATIONS.map(n=>[n.id,n.color]));
+const m=await (await fetch('../../assets/map.json')).json();
+const c=document.getElementById('c'); const S=0.42; c.width=m.W*S; c.height=m.H*S; const g=c.getContext('2d'); g.scale(S,S);
+g.fillStyle='#4f7f8c'; g.fillRect(0,0,m.W,m.H);
+for(const p of m.provinces){ g.beginPath(); for(const poly of p.poly) for(const r of poly){ g.moveTo(r[0],r[1]); for(let i=2;i<r.length;i+=2) g.lineTo(r[i],r[i+1]); g.closePath(); }
+ g.fillStyle=col[p.owner]; g.fill('evenodd'); g.strokeStyle='rgba(40,30,20,.5)'; g.lineWidth=1.5; g.stroke(); }
+g.fillStyle='#000'; g.font='14px sans-serif'; for(const p of m.provinces){ g.fillRect(p.x-2,p.y-2,4,4); if(p.capital){g.font='bold 30px sans-serif'; g.fillText(NATIONS.find(n=>n.id===p.capital).name,p.x+5,p.y); g.font='14px sans-serif';} else g.fillText(p.name,p.x+4,p.y-3);}
+g.fillStyle='#fff'; for(const s of m.seas){g.fillRect(s.x-3,s.y-3,6,6);}
+g.strokeStyle='rgba(255,255,255,.25)'; g.lineWidth=1; m.adj.forEach((a,i)=>{const A=i<m.provinces.length?m.provinces[i]:m.seas[i-m.provinces.length]; for(const j of a){ if(j<i) continue; const B=j<m.provinces.length?m.provinces[j]:m.seas[j-m.provinces.length]; if(i>=m.provinces.length||j>=m.provinces.length){g.beginPath();g.moveTo(A.x,A.y);g.lineTo(B.x,B.y);g.stroke();}}});
+document.title='done';
+</script></body></html>

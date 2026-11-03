@@ -1,0 +1,7 @@
+<html><body style="margin:0;background:#2b2620;display:flex;flex-wrap:wrap;gap:6px;padding:6px"><script type=module>
+import { unitArtSVG } from '../../src/ui/unitart.js';
+const us = ['infantaria','choque','cavalaria','blindado','artleve','antiaereo','artilharia','tanqueleve','tanquepesado','ferroviario','balao','caca','bombardeiro','zepelim','submarino','cruzador','couracado','transporte'];
+for (const u of us) { const d = document.createElement('div'); d.style.cssText = 'width:150px;height:96px;background:#d9cfb6;display:grid;place-items:center'; d.innerHTML = unitArtSVG(u, u === 'infantaria' ? 'fra' : 'ale', 'width="140" height="86"'); document.body.appendChild(d); }
+const r = document.createElement('div'); r.style.cssText = 'width:100%;display:flex;gap:4px;background:#cbc1a6;padding:6px'; for (const n of ['fra','ale','gbr','rus','ita','tur','aus']) r.innerHTML += unitArtSVG('infantaria', n, 'width="44" height="28"'); for (const u of us) r.innerHTML += unitArtSVG(u, 'ale', 'width="44" height="28"'); document.body.appendChild(r);
+document.title = 'done';
+</script></body></html>

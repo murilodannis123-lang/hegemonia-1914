@@ -11,6 +11,8 @@ import { nationPower } from '../engine/ai.js';
 import { MapView } from './render.js';
 import { RES_ICON, UNIT_ICON, UI_ICON, BUILD_ICON } from './icons.js';
 import { flagSVG } from './flags.js';
+import { unitArtSVG } from './unitart.js';
+const UA = (u, nat) => unitArtSVG(u, nat || (S && S.opts.player) || 'fra', 'class="ic unit"');
 import { photoFor, photoUrl, ALL_PHOTOS, PHOTO_CATS, NEWS_PHOTO } from '../data/photos.js';
 
 const $ = s => document.querySelector(s);
@@ -271,11 +273,11 @@ function stackPanel(st) {
   const others = S.stacks.filter(o => o !== st && o.nat === P && stackDomain(o) === dom && (dom === 'air' ? !o.mission && !st.mission && o.base === st.base : o.node === st.node && o.prog === 0 && st.prog === 0));
   return `<div class="ph ${cls}">${flagSVG(st.nat)}<div class="t">${esc(st.name || (UNITS[top]?.name || 'Tropa') + ' · ' + (st.nat === 'reb' ? 'Rebeldes' : NATION_BY_ID[st.nat].adj))}</div>${relTag(st.nat)}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
   <div class="pb">
-    <div style="width:150px;padding:0;position:relative"><div class="vign">${UNIT_ICON[top] || ''}<img src="${photoFor(UNIT_PHOTO[top] || 'infantaria', st.id)}" alt="" onerror="this.remove()"></div></div>
+    <div style="width:150px;padding:0;position:relative"><div class="vign">${top ? unitArtSVG(top, st.nat, 'class="ic"') : ''}<img src="${photoFor(UNIT_PHOTO[top] || 'infantaria', st.id)}" alt="" onerror="this.remove()"></div></div>
     <div style="min-width:170px"><div class="lbl">Pontos de vida</div><div class="row"><div class="bar grow"><i style="width:${f * 100}%;background:${f > .6 ? 'var(--good)' : f > .3 ? '#e2b84a' : 'var(--bad)'}"></i></div><b class="small">${Math.round(hp.hp)}/${Math.round(hp.max)}</b></div>
       <div class="stats" style="margin-top:8px"><span>${UI_ICON.raio} <b>${atk.toFixed(0)}</b></span><span>${UI_ICON.escudo} <b>${def.toFixed(0)}</b></span><span>${UI_ICON.velocidade} <b>${stackSpeed(S, st)}</b> km/h</span>${dom === 'air' ? `<span>alcance <b>${stackRange(st)}</b> km</span>` : ''}</div>
       <div class="small" style="margin-top:6px">${esc(where)}${eta}</div></div>
-    <div class="grow"><div class="lbl">Unidades</div><div class="chips">${Object.entries(st.units).map(([u, e]) => `<span class="chip" title="${UNITS[u].name}">${UNIT_ICON[u]} ${e.n}</span>`).join('')}</div>
+    <div class="grow"><div class="lbl">Unidades</div><div class="chips">${Object.entries(st.units).map(([u, e]) => `<span class="chip" title="${UNITS[u].name}">${UA(u, st.nat)} ${e.n}</span>`).join('')}</div>
       ${own && dom !== 'air' ? `<div class="small muted" style="margin-top:8px">Toque no mapa para mover · toque numa tropa inimiga para atacar</div>` : ''}
       ${own && dom === 'air' ? `<div class="small muted" style="margin-top:8px">Escolha a missão e toque no mapa (dentro do círculo de alcance)</div>` : ''}</div>
     ${own ? `<div class="row" style="gap:8px;flex-wrap:wrap;max-width:260px">
@@ -328,7 +330,7 @@ $('#modal').addEventListener('click', e => {
 });
 $('#modal').addEventListener('change', e => { const a = e.target.closest('[data-chg]'); if (a && win) { const fn = ACTS[a.dataset.chg]; if (fn) { fn(a, win); renderWin(); } } });
 function res(r, v, have) { return `<span class="cost ${have != null && have < v ? 'no' : ''}">${RES_ICON[r]}${fmt(v)}</span>`; }
-function art(unitOrBuild, cat, seed) { return `<div class="vign">${UNIT_ICON[unitOrBuild] || BUILD_ICON[unitOrBuild] || ''}<img loading="lazy" src="${photoFor(cat, seed)}" alt="" onerror="this.remove()"></div>`; }
+function art(unitOrBuild, cat, seed) { return `<div class="vign">${UNITS[unitOrBuild] ? unitArtSVG(unitOrBuild, S.opts.player, 'class="ic"') : BUILD_ICON[unitOrBuild] || ''}<img loading="lazy" src="${photoFor(cat, seed)}" alt="" onerror="this.remove()"></div>`; }
 
 const WINS = {
   provincia(w) {
@@ -338,7 +340,7 @@ const WINS = {
     const q = sp.queue;
     const qbar = `<div class="qbar"><div><div class="lbl">Construção atual</div>${sp.build ? `<div class="prog"><i style="width:${100 * (1 - sp.build.left / sp.build.total)}%"></i><span>${BUILDINGS[sp.build.type].name} · ${hrs(sp.build.left)}</span></div><div class="row" style="margin-top:6px"><button class="btn" data-act="cancelBuild">Cancelar</button><button class="btn" data-act="rushBuild">Acelerar · ${fmt(C.speedUpCost(sp.build))}</button></div>` : '<span class="muted small">Nada em construção</span>'}</div>
       <div><div class="lbl">Produção atual</div>${q[0] ? `<div class="prog"><i style="width:${100 * (1 - q[0].left / q[0].total)}%"></i><span>${UNITS[q[0].u].name} · ${hrs(q[0].left)}</span></div><div class="row" style="margin-top:6px"><button class="btn" data-act="rushUnit">Acelerar · ${fmt(C.speedUpCost(q[0]))}</button></div>` : '<span class="muted small">Nada sendo produzido</span>'}</div>
-      <div><div class="lbl">Fila de produção (${q.length}/8) · toque para cancelar</div><div class="qdots">${Array.from({ length: 8 }, (_, k) => q[k] ? `<span class="qdot" data-act="cancelQ" data-i="${k}" title="${UNITS[q[k].u].name}">${UNIT_ICON[q[k].u]}</span>` : '<span class="qdot empty"></span>').join('')}</div></div></div>`;
+      <div><div class="lbl">Fila de produção (${q.length}/8) · toque para cancelar</div><div class="qdots">${Array.from({ length: 8 }, (_, k) => q[k] ? `<span class="qdot" data-act="cancelQ" data-i="${k}" title="${UNITS[q[k].u].name}">${UA(q[k].u)}</span>` : '<span class="qdot empty"></span>').join('')}</div></div></div>`;
     let rows = '';
     if (tab === 'edificios') rows = BUILD_ORDER.map(b => {
       const B = BUILDINGS[b]; const u = buildUnlocked(S, M, i, b); const cur = sp.b[b] || 0; const lvl = Math.min(cur + 1, B.max);
@@ -362,7 +364,7 @@ const WINS = {
   dividir(w) {
     const st = S.stacks.find(s => s.id === w.id); if (!st) return frame({ title: 'Dividir', body: '<div class="pad">Tropa não existe mais.</div>' });
     w.take = w.take || Object.fromEntries(Object.entries(st.units).map(([u, e]) => [u, Math.floor(e.n / 2)]));
-    return frame({ title: 'Dividir tropa', body: `<div class="pad"><p class="muted">Escolha quantas unidades formarão a nova tropa.</p>${Object.entries(st.units).map(([u, e]) => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)">${UNIT_ICON[u]}<span class="grow">${UNITS[u].name}</span><button class="btn" data-act="spl" data-u="${u}" data-d="-1">−</button><b style="width:60px;text-align:center">${w.take[u] || 0} / ${e.n}</b><button class="btn" data-act="spl" data-u="${u}" data-d="1">+</button></div>`).join('')}
+    return frame({ title: 'Dividir tropa', body: `<div class="pad"><p class="muted">Escolha quantas unidades formarão a nova tropa.</p>${Object.entries(st.units).map(([u, e]) => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)">${UA(u)}<span class="grow">${UNITS[u].name}</span><button class="btn" data-act="spl" data-u="${u}" data-d="-1">−</button><b style="width:60px;text-align:center">${w.take[u] || 0} / ${e.n}</b><button class="btn" data-act="spl" data-u="${u}" data-d="1">+</button></div>`).join('')}
       <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn pri" data-act="doSplit">Dividir</button></div></div>` });
   },
   recursos() {
@@ -433,7 +435,7 @@ const WINS = {
   exercitos(w) {
     const P = S.opts.player; w.live = true; const list = S.stacks.filter(s => s.nat === P);
     return frame({ title: 'Exércitos', cat: 'infantaria', wide: true, body: `<table class="t"><tr><th>Tropa</th><th>Unidades</th><th>Vida</th><th>Local</th><th>Situação</th></tr>${list.map(s => { const hp = stackHP(s); const dom = stackDomain(s); const loc = dom === 'air' ? M.nodes[s.base].name : M.nodes[s.node].name; const sit = dom === 'air' ? (s.mission ? s.mission.type === 'patrol' ? 'Patrulha' : s.mission.type === 'strike' ? 'Ataque' : 'Retornando' : 'Na base') : s.fighting ? 'Em combate' : s.path.length ? 'Em marcha → ' + M.nodes[s.path[s.path.length - 1]].name : 'Parado';
-      return `<tr class="click" data-act="selS" data-id="${s.id}"><td><b>${esc(s.name || UNITS[Object.keys(s.units)[0]].name)}</b></td><td>${Object.entries(s.units).map(([u, e]) => `<span class="chip" style="display:inline-flex">${UNIT_ICON[u]}${e.n}</span>`).join(' ')}</td><td>${Math.round(100 * hp.hp / hp.max)}%</td><td>${esc(loc)}</td><td class="small">${esc(sit)}</td></tr>`; }).join('')}</table>` });
+      return `<tr class="click" data-act="selS" data-id="${s.id}"><td><b>${esc(s.name || UNITS[Object.keys(s.units)[0]].name)}</b></td><td>${Object.entries(s.units).map(([u, e]) => `<span class="chip" style="display:inline-flex">${UA(u)}${e.n}</span>`).join(' ')}</td><td>${Math.round(100 * hp.hp / hp.max)}%</td><td>${esc(loc)}</td><td class="small">${esc(sit)}</td></tr>`; }).join('')}</table>` });
   },
   eventos() {
     const ev = S.events.slice().reverse().slice(0, 120);

@@ -5,6 +5,7 @@ import { stackDomain } from '../engine/state.js';
 import { rel, stackCount, stackHP, stackSpeed, stackPos } from '../engine/sim.js';
 import { stackVisible } from '../engine/vision.js';
 import { UNIT_ICON, RES_ICON } from './icons.js';
+import { unitArtSVG } from './unitart.js';
 import { flagImage } from './flags.js';
 
 const RES_COLOR = { graos: '#d8c06a', peixe: '#7fa9bd', ferro: '#8e939b', madeira: '#8d6a43', carvao: '#4a4a4a', petroleo: '#6b3b2a', gas: '#c8645a' };
@@ -19,6 +20,7 @@ export class MapView {
     this.glyphs = this.makeGlyphs();
     this.resImg = {}; for (const [r, svgs] of Object.entries(RES_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgs.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" ')); this.resImg[r] = i; }
     this.noise = this.makeNoise();
+    this.artImg = {};
     this.unitImg = {}; for (const [u, s] of Object.entries(UNIT_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60" color="#f3ead6" ').replace(/currentColor/g, '#f3ead6')); this.unitImg[u] = i; }
     this.resize();
   }
@@ -210,7 +212,7 @@ export class MapView {
         const nd = M.nodes[p.id];
         g.fillStyle = p.city ? 'rgba(40,30,20,.85)' : 'rgba(40,30,20,.55)';
         g.beginPath(); g.arc(nd.x, nd.y, (p.city ? 3 : 2) * sx, 0, Math.PI * 2); g.fill();
-        if (k > 0.55 || p.city) { g.fillStyle = 'rgba(35,28,20,.8)'; g.fillText(p.name, nd.x, nd.y - 10 * sx); }
+        if (k > 0.55 || p.city) { g.fillStyle = 'rgba(35,28,20,.8)'; g.fillText(p.name, nd.x, nd.y - (p.city ? 42 : 40) * sx); }
         if (k > 0.5) { const ri = this.resImg[p.res]; if (ri && ri.complete) { const z = (p.double ? 17 : 13) * sx; g.drawImage(ri, nd.x + 16 * sx, nd.y + 8 * sx, z, z); if (p.double) g.drawImage(ri, nd.x + 26 * sx, nd.y + 8 * sx, z, z); } }
       }
     }
@@ -249,36 +251,38 @@ export class MapView {
       const [scx, scy] = this.toScreen(p.x + ox, p.y + oy); this.hits.push({ id: st.id, x: scx, y: scy });
     }
   }
+  art(u, nat) { const k = u + nat; let i = this.artImg[k]; if (!i) { i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(unitArtSVG(u, nat, 'width="208" height="128"')); this.artImg[k] = i; } return i; }
   drawToken(S, st, x, y, selected) {
     const g = this.g, sx = 1 / this.k, P = S.opts.player;
-    const scale = Math.max(0.75, Math.min(1.25, this.k * 2.2));
-    const s = sx * scale; const w = 34 * s, h = 26 * s;
+    const s = sx * Math.max(0.8, Math.min(1.3, this.k * 2.2));
     const dom = stackDomain(st);
     let top = null, best = -1; for (const [u, e] of Object.entries(st.units)) { const v = e.n * UNITS[u].hp; if (v > best) { best = v; top = u; } }
     const embarked = dom === 'land' && (!this.M.isLand(st.node) || (st.prog > 0 && st.path.length && !this.M.isLand(st.path[0])));
     const icon = embarked ? 'transporte' : top;
     const r = st.nat === P ? 'self' : rel(S, P, st.nat);
     const rim = r === 'self' ? '#e8d9a8' : r === 'guerra' ? '#e0573e' : r === 'aliado' ? '#7fb3e6' : '#b8ad92';
-    const fill = st.nat === 'reb' ? '#3c3530' : NATION_BY_ID[st.nat].color;
-    g.save(); g.translate(x, y - 14 * s);
-    // sombra
-    g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.ellipse(0, h / 2 + 3 * s, w / 2, 4 * s, 0, 0, Math.PI * 2); g.fill();
-    // escudo
-    g.beginPath(); g.moveTo(-w / 2, -h / 2); g.lineTo(w / 2, -h / 2); g.lineTo(w / 2, h / 4); g.lineTo(0, h / 2 + 4 * s); g.lineTo(-w / 2, h / 4); g.closePath();
-    g.fillStyle = '#2b2620'; g.fill(); g.lineWidth = (selected ? 3 : 1.6) * s; g.strokeStyle = selected ? '#ffd35a' : rim; g.stroke();
-    g.fillStyle = fill; g.fillRect(-w / 2 + 2 * s, -h / 2 + 2 * s, w - 4 * s, 4 * s);
-    const img = this.unitImg[icon]; if (img && img.complete) g.drawImage(img, -15.5 * s, -8 * s, 31 * s, 18.6 * s);
-    // contador
-    const n = stackCount(st); g.font = `700 ${9 * s}px Oswald, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = '#1c1814'; g.beginPath(); g.arc(w / 2 - 1 * s, -h / 2, 7 * s, 0, Math.PI * 2); g.fill(); g.strokeStyle = rim; g.lineWidth = 1 * s; g.stroke();
-    g.fillStyle = '#fff'; g.fillText(n > 99 ? '99+' : String(n), w / 2 - 1 * s, -h / 2 + 0.5 * s);
+    const nc = st.nat === 'reb' ? '#3c3530' : NATION_BY_ID[st.nat].color;
+    g.save(); g.translate(x, y);
+    // sombra e destaque
+    g.fillStyle = selected ? 'rgba(255,211,90,.55)' : 'rgba(0,0,0,.32)'; g.beginPath(); g.ellipse(0, -2 * s, (selected ? 24 : 19) * s, (selected ? 8 : 6) * s, 0, 0, Math.PI * 2); g.fill();
+    // figura
+    const img = this.art(icon, st.nat === 'reb' ? 'xx' : st.nat);
+    if (img.complete) g.drawImage(img, -26 * s, -35 * s, 52 * s, 32 * s);
+    // placa com número
+    const n = stackCount(st); const label = n > 999 ? '999+' : String(n);
+    g.font = `600 ${10 * s}px Oswald, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const tw = Math.max(16 * s, g.measureText(label).width + 10 * s);
+    g.fillStyle = '#1f1a15'; g.strokeStyle = selected ? '#ffd35a' : rim; g.lineWidth = (selected ? 2.4 : 1.4) * s;
+    g.beginPath(); g.roundRect(-tw / 2, -3 * s, tw, 12 * s, 3 * s); g.fill(); g.stroke();
+    g.fillStyle = nc; g.fillRect(-tw / 2 + 1.5 * s, -1.5 * s, 3 * s, 9 * s);
+    g.fillStyle = '#f6efe0'; g.fillText(label, 1.5 * s, 3.3 * s);
     // vida
     const hp = stackHP(st); const f = hp.max ? hp.hp / hp.max : 0;
-    g.fillStyle = '#111'; g.fillRect(-w / 2 + 3 * s, h / 4 - 1 * s, w - 6 * s, 3 * s);
-    g.fillStyle = f > 0.6 ? '#7cc26a' : f > 0.3 ? '#e2b84a' : '#d9533c'; g.fillRect(-w / 2 + 3 * s, h / 4 - 1 * s, (w - 6 * s) * f, 3 * s);
-    if (st.fighting) { g.fillStyle = '#e0573e'; g.beginPath(); g.arc(-w / 2 + 1 * s, -h / 2, 4 * s, 0, Math.PI * 2); g.fill(); }
+    g.fillStyle = '#111'; g.fillRect(-tw / 2, 10 * s, tw, 2.6 * s);
+    g.fillStyle = f > 0.6 ? '#7cc26a' : f > 0.3 ? '#e2b84a' : '#d9533c'; g.fillRect(-tw / 2, 10 * s, tw * f, 2.6 * s);
+    if (st.fighting) { g.fillStyle = '#e0573e'; g.beginPath(); g.arc(tw / 2 + 3 * s, -1 * s, 3.5 * s, 0, Math.PI * 2); g.fill(); }
     g.restore();
   }
   // clique: pilha mais próxima em raio de 20px
-  hitStack(sx, sy) { let best = null, bd = 22; for (const h of this.hits || []) { const d = Math.hypot(h.x - sx, h.y - (sy + 10)); if (d < bd) { bd = d; best = h.id; } } return best; }
+  hitStack(sx, sy) { let best = null, bd = 22; for (const h of this.hits || []) { const d = Math.hypot(h.x - sx, h.y - (sy + 14)); if (d < bd) { bd = d; best = h.id; } } return best; }
 }

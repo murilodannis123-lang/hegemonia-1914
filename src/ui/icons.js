@@ -7,7 +7,7 @@ export const RES_ICON = {
   peixe: svg('0 0 24 24', `<path d="M3 12c4-6 11-6 15 0-4 6-11 6-15 0z" fill="#9fb8c4"/><path d="M17 12l5-4v8z" fill="#7f9aa8"/><circle cx="7.5" cy="11" r="1.1" fill="#1d2a30"/><path d="M10 9c1 2 1 4 0 6" stroke="#6c8794" fill="none"/>`),
   ferro: svg('0 0 24 24', `<path d="M4 16l3-6h10l3 6z" fill="#8a8f96"/><path d="M7 10l2-3h6l2 3z" fill="#b5bac0"/><path d="M4 16h16v3H4z" fill="#5d6268"/>`),
   madeira: svg('0 0 24 24', `<rect x="3" y="7" width="15" height="5" rx="2.5" fill="#9a6a3c"/><rect x="6" y="13" width="15" height="5" rx="2.5" fill="#86592f"/><circle cx="18" cy="9.5" r="2.4" fill="#d9b07a"/><circle cx="18" cy="9.5" r="1" fill="none" stroke="#9a6a3c"/><circle cx="21" cy="15.5" r="2.4" fill="#c99d66"/>`),
-  carvao: svg('0 0 24 24', `<path d="M3 18l3-7 5-2 3 3 5-1 2 7z" fill="#3a3a3a"/><path d="M6 11l5-2 1 4-4 2z" fill="#5a5a5a"/><path d="M14 12l5-1 1 4-5 1z" fill="#4b4b4b"/>`),
+  carvao: svg('0 0 24 24', `<path d="M3 18l3-7 5-2 3 3 5-1 2 7z" fill="#7a7a7a"/><path d="M6 11l5-2 1 4-4 2z" fill="#a0a0a0"/><path d="M14 12l5-1 1 4-5 1z" fill="#8c8c8c"/>`),
   petroleo: svg('0 0 24 24', `<rect x="6" y="4" width="12" height="17" rx="2" fill="#6b3b2a"/><rect x="6" y="8" width="12" height="1.5" fill="#3f2218"/><rect x="6" y="15" width="12" height="1.5" fill="#3f2218"/><path d="M12 10.5c1.5 2 1.5 3 0 3.5-1.5-.5-1.5-1.5 0-3.5z" fill="#d8c27a"/>`),
   gas: svg('0 0 24 24', `<rect x="7" y="6" width="10" height="15" rx="4" fill="#c8483c"/><rect x="10" y="3" width="4" height="4" fill="#8f2f27"/><rect x="9" y="11" width="6" height="4" rx="1" fill="#f1e5c8"/>`),
 };

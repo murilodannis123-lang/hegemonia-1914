@@ -20,7 +20,7 @@ const hrs = h => { h = Math.max(0, h); if (h < 1) return Math.max(1, Math.round(
 const SPEEDS = [0, 1800, 600, 140];   // ms reais por hora de jogo
 const UNIT_PHOTO = { infantaria: 'infantaria', cavalaria: 'cavalaria', choque: 'gas', blindado: 'tanque', artleve: 'artilharia', antiaereo: 'artilharia', artilharia: 'artilharia', tanqueleve: 'tanque', tanquepesado: 'tanque', ferroviario: 'artilharia', balao: 'zepelim', caca: 'aviao', bombardeiro: 'aviao', zepelim: 'zepelim', submarino: 'submarino', cruzador: 'navio', couracado: 'navio' };
 const BUILD_PHOTO = { recrutamento: 'multidao', quartel: 'infantaria', oficina: 'fabrica', fabrica: 'fabrica', ferrovia: 'trem', porto: 'navio', aerodromo: 'aviao', forte: 'trincheira' };
-const banner = (cat, i = 0) => `url("${photoFor(cat, i)}")`;
+const banner = (cat, i = 0) => `url(&quot;${photoFor(cat, i)}&quot;)`;
 
 let M, S = null, view, vis = null, speed = 1, acc = 0, lastT = 0, seenEvents = 0, unread = 0;
 let selStack = null, selProv = -1, airMode = 'patrol', win = null, lastUi = 0, lastWin = 0, previewKey = '';

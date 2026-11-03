@@ -4,7 +4,7 @@ import { UNITS } from '../engine/defs.js';
 import { stackDomain } from '../engine/state.js';
 import { rel, stackCount, stackHP, stackSpeed, stackPos } from '../engine/sim.js';
 import { stackVisible } from '../engine/vision.js';
-import { UNIT_ICON } from './icons.js';
+import { UNIT_ICON, RES_ICON } from './icons.js';
 import { flagImage } from './flags.js';
 
 const RES_COLOR = { graos: '#d8c06a', peixe: '#7fa9bd', ferro: '#8e939b', madeira: '#8d6a43', carvao: '#4a4a4a', petroleo: '#6b3b2a', gas: '#c8645a' };
@@ -16,8 +16,10 @@ export class MapView {
     this.paths = M.provinces.map(p => { const P = new Path2D(); for (const poly of p.poly) for (const r of poly) { P.moveTo(r[0], r[1]); for (let i = 2; i < r.length; i += 2) P.lineTo(r[i], r[i + 1]); P.closePath(); } return P; });
     this.allLand = new Path2D(); this.paths.forEach(p => this.allLand.addPath(p));
     this.buildEdges();
+    this.glyphs = this.makeGlyphs();
+    this.resImg = {}; for (const [r, svgs] of Object.entries(RES_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgs.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" ')); this.resImg[r] = i; }
     this.noise = this.makeNoise();
-    this.unitImg = {}; for (const [u, s] of Object.entries(UNIT_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40" color="#f3ead6" ').replace(/currentColor/g, '#f3ead6')); this.unitImg[u] = i; }
+    this.unitImg = {}; for (const [u, s] of Object.entries(UNIT_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60" color="#f3ead6" ').replace(/currentColor/g, '#f3ead6')); this.unitImg[u] = i; }
     this.resize();
   }
   // arestas compartilhadas entre províncias (para fronteiras de nação)
@@ -100,6 +102,29 @@ export class MapView {
       this.preview.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); g.setLineDash([]);
     }
   }
+  makeGlyphs() {
+    const M = this.M; let seed = 7; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const out = [];
+    for (const p of M.provinces) {
+      const t = p.terrain; const n = { floresta: 7, montanha: 5, colina: 4, deserto: 6 }[t]; if (!n) continue;
+      for (let i = 0, tries = 0; i < n && tries < 40; tries++) {
+        const a = rnd() * Math.PI * 2, r = 18 + rnd() * 55; const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
+        if (M.nodeAt(x, y) !== p.id) continue; out.push([t, x, y, 0.8 + rnd() * 0.5]); i++;
+      }
+    }
+    return out;
+  }
+  drawTerrain(g, k) {
+    g.save(); g.lineWidth = 1.1 / k * Math.min(1, k * 2.5); g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const [t, x, y, s0] of this.glyphs) {
+      const s = 7 * s0;
+      if (t === 'floresta') { g.fillStyle = 'rgba(70,90,55,.42)'; g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s * 0.6, y + s * 0.4); g.lineTo(x - s * 0.6, y + s * 0.4); g.closePath(); g.fill(); g.strokeStyle = 'rgba(70,55,40,.4)'; g.beginPath(); g.moveTo(x, y + s * 0.4); g.lineTo(x, y + s * 0.8); g.stroke(); }
+      else if (t === 'montanha') { g.strokeStyle = 'rgba(80,60,40,.55)'; g.fillStyle = 'rgba(255,250,240,.25)'; g.beginPath(); g.moveTo(x - s * 1.1, y + s * 0.6); g.lineTo(x - s * 0.2, y - s * 0.9); g.lineTo(x + s * 0.4, y); g.lineTo(x + s * 0.7, y - s * 0.4); g.lineTo(x + s * 1.3, y + s * 0.6); g.fill(); g.stroke(); }
+      else if (t === 'colina') { g.strokeStyle = 'rgba(90,70,45,.45)'; g.beginPath(); g.arc(x, y + s * 0.4, s * 0.8, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); }
+      else if (t === 'deserto') { g.fillStyle = 'rgba(120,90,50,.35)'; for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(x + (i % 2) * s * 0.7, y + (i >> 1) * s * 0.6, s * 0.12, 0, Math.PI * 2); g.fill(); } }
+    }
+    g.restore();
+  }
   drawBase(g, k, S, vis) {
     const M = this.M, P = S.opts.player;
     // bordas do mapa
@@ -119,14 +144,16 @@ export class MapView {
     // linhas de província
     g.strokeStyle = 'rgba(70,55,40,.35)'; g.lineWidth = 0.8 / k;
     for (let i = 0; i < M.provinces.length; i++) g.stroke(this.paths[i]);
+    // desenhos de terreno
+    if (k > 0.2) this.drawTerrain(g, k);
     // fronteiras de nação
     g.beginPath();
     for (const e of this.edges) if (S.provinces[e.p1].owner !== S.provinces[e.p2].owner) { g.moveTo(e.x1, e.y1); g.lineTo(e.x2, e.y2); }
-    g.strokeStyle = 'rgba(250,245,232,.85)'; g.lineWidth = 2.6 / k; g.stroke();
-    g.strokeStyle = 'rgba(60,45,30,.55)'; g.lineWidth = 1 / k; g.stroke();
+    g.strokeStyle = 'rgba(250,245,232,.8)'; g.lineWidth = 5 / k; g.stroke();
+    g.strokeStyle = 'rgba(45,32,20,.9)'; g.lineWidth = 2.2 / k; g.stroke();
     // contorno do jogador
     g.beginPath(); for (const e of this.edges) { const a = S.provinces[e.p1].owner === P, b = S.provinces[e.p2].owner === P; if (a !== b) { g.moveTo(e.x1, e.y1); g.lineTo(e.x2, e.y2); } }
-    g.strokeStyle = 'rgba(70,120,60,.9)'; g.lineWidth = 2.2 / k; g.stroke();
+    g.strokeStyle = 'rgba(55,105,45,.95)'; g.lineWidth = 3 / k; g.stroke();
     // costa
     g.strokeStyle = 'rgba(40,50,45,.6)'; g.lineWidth = 1 / k; g.stroke(this.allLand);
   }
@@ -167,6 +194,7 @@ export class MapView {
         g.fillStyle = p.city ? 'rgba(40,30,20,.85)' : 'rgba(40,30,20,.55)';
         g.beginPath(); g.arc(nd.x, nd.y, (p.city ? 3 : 2) * sx, 0, Math.PI * 2); g.fill();
         if (k > 0.55 || p.city) { g.fillStyle = 'rgba(35,28,20,.8)'; g.fillText(p.name, nd.x, nd.y - 10 * sx); }
+        if (k > 0.5) { const ri = this.resImg[p.res]; if (ri && ri.complete) { const z = (p.double ? 17 : 13) * sx; g.drawImage(ri, nd.x + 16 * sx, nd.y + 8 * sx, z, z); if (p.double) g.drawImage(ri, nd.x + 26 * sx, nd.y + 8 * sx, z, z); } }
       }
     }
     // batalhas
@@ -222,7 +250,7 @@ export class MapView {
     g.beginPath(); g.moveTo(-w / 2, -h / 2); g.lineTo(w / 2, -h / 2); g.lineTo(w / 2, h / 4); g.lineTo(0, h / 2 + 4 * s); g.lineTo(-w / 2, h / 4); g.closePath();
     g.fillStyle = '#2b2620'; g.fill(); g.lineWidth = (selected ? 3 : 1.6) * s; g.strokeStyle = selected ? '#ffd35a' : rim; g.stroke();
     g.fillStyle = fill; g.fillRect(-w / 2 + 2 * s, -h / 2 + 2 * s, w - 4 * s, 4 * s);
-    const img = this.unitImg[icon]; if (img && img.complete) g.drawImage(img, -14 * s, -7 * s, 28 * s, 17.5 * s);
+    const img = this.unitImg[icon]; if (img && img.complete) g.drawImage(img, -15.5 * s, -8 * s, 31 * s, 18.6 * s);
     // contador
     const n = stackCount(st); g.font = `700 ${9 * s}px Oswald, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillStyle = '#1c1814'; g.beginPath(); g.arc(w / 2 - 1 * s, -h / 2, 7 * s, 0, Math.PI * 2); g.fill(); g.strokeStyle = rim; g.lineWidth = 1 * s; g.stroke();

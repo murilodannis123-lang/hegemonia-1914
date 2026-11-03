@@ -289,7 +289,45 @@ for (let i = 0; i < nL; i++) {
   const cellC = cell.slice(0, -1);
   let inter = near.map(poly => poly.map(r => clipConvex(r.slice(0, -1), cellC)).filter(r => r.length >= 4)).filter(p => p.length);
   inter = inter.map(poly => poly.map(r => r.map(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10]))).filter(poly => Math.abs(ringArea(poly[0])) > 15);
+  // bordas internas (arestas de Voronoi) ficam irregulares, de forma idêntica nos dois vizinhos
+  inter = inter.map(poly => poly.map(r => jitterRing(r, cellC)));
   provinces.push(inter);
+}
+
+// ---------- bordas irregulares
+function onCellEdge(P, Q, cell) {
+  for (let i = 0; i < cell.length; i++) {
+    const A = cell[i], B = cell[(i + 1) % cell.length]; const dx = B[0] - A[0], dy = B[1] - A[1]; const L = Math.hypot(dx, dy) || 1;
+    const d1 = Math.abs((P[0] - A[0]) * dy - (P[1] - A[1]) * dx) / L, d2 = Math.abs((Q[0] - A[0]) * dy - (Q[1] - A[1]) * dx) / L;
+    if (d1 < 0.25 && d2 < 0.25) return true;
+  }
+  return false;
+}
+function hashRng(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return () => { h = (h + 0x6D2B79F5) >>> 0; let t = h; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function wiggle(P, Q) {
+  // canônico: sempre do menor para o maior ponto, para os dois vizinhos gerarem a mesma linha
+  const kP = P.join(','), kQ = Q.join(','); const flip = kP > kQ; const [A, B] = flip ? [Q, P] : [P, Q];
+  const rnd = hashRng(kP < kQ ? kP + '|' + kQ : kQ + '|' + kP);
+  let pts = [A, B];
+  for (let depth = 0; depth < 6; depth++) {
+    const out = [pts[0]]; let changed = false;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i]; const dx = b[0] - a[0], dy = b[1] - a[1]; const L = Math.hypot(dx, dy);
+      if (L > 7) { const off = (rnd() - 0.5) * L * 0.38; out.push([Math.round(((a[0] + b[0]) / 2 - dy / L * off) * 10) / 10, Math.round(((a[1] + b[1]) / 2 + dx / L * off) * 10) / 10]); changed = true; }
+      out.push(b);
+    }
+    pts = out; if (!changed) break;
+  }
+  if (flip) pts.reverse();
+  return pts;
+}
+function jitterRing(r, cell) {
+  const out = [r[0]];
+  for (let i = 1; i < r.length; i++) {
+    const P = r[i - 1], Q = r[i];
+    if (Math.hypot(Q[0] - P[0], Q[1] - P[1]) > 7 && onCellEdge(P, Q, cell)) out.push(...wiggle(P, Q).slice(1)); else out.push(Q);
+  }
+  return out;
 }
 // ---------- terreno
 const MOUNTAINS = [

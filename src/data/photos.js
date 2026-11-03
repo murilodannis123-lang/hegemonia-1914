@@ -1,7 +1,7 @@
 // Acervo de fotos reais da Primeira Guerra (Wikimedia Commons, domínio público).
 // Carregadas direto do Commons pelo navegador do jogador.
 const P = {
-  trincheira: ['Cheshire Regiment trench Somme 1916.jpg', 'Breastwork trench at Armentieres 1916.jpg', 'Lancashire Fusiliers trench Beaumont Hamel 1916.jpg', 'Stretcher bearers Battle of Thiepval Ridge September 1916.jpg', 'French trench battle.jpg'],
+  trincheira: ['Cheshire Regiment trench Somme 1916.jpg', 'Breastwork trench at Armentieres 1916.jpg', 'Lancashire Fusiliers trench Beaumont Hamel 1916.jpg', 'French trench battle.jpg'],
   infantaria: ['British infantry advancing at Loos 25 September 1915.jpg', '7th Division advance Somme 01-07-1916 IWM Q 89.jpg'],
   artilharia: ['FrankHurleyAustralian8inchHowitzerBattery.jpg', 'BL12inchRailwayHowitzerMkI.jpg', '12inchRailwayHowitzerHildaYpres7November1917.jpeg', 'Australian8inchHowitzerFiringYpres15September1917.jpeg', '12inchMkVRailwayHowitzerFiringSoissons1917.jpeg'],
   tanque: ['Wrecked captured Mark I series tank.jpg', 'Captured Mark IV series tank.jpg', 'Mark IV supply tank AWM C04889.jpeg', 'Mark IV Berlin.jpg'],
@@ -29,4 +29,4 @@ export const photos = cat => (P[cat] || P.trincheira);
 export function photoFor(cat, seed) { const l = photos(cat); return photoUrl(l[Math.abs(seed | 0) % l.length]); }
 export const ALL_PHOTOS = P;
 // categoria de foto por tipo de notícia
-export const NEWS_PHOTO = { guerra: 'multidao', paz: 'diplomacia', coligacao: 'diplomacia', conquista: 'infantaria', capital: 'ruinas', eliminacao: 'prisioneiros', rebeliao: 'revolta', fim: 'desfile', geral: 'trincheira', batalha: 'trincheira', aereo: 'aviao', naval: 'navio', industria: 'fabrica' };
+export const NEWS_PHOTO = { visita: 'diplomacia', comunicado: 'multidao', guerra: 'multidao', paz: 'diplomacia', coligacao: 'diplomacia', conquista: 'infantaria', capital: 'ruinas', eliminacao: 'prisioneiros', rebeliao: 'revolta', fim: 'desfile', geral: 'trincheira', batalha: 'trincheira', aereo: 'aviao', naval: 'navio', industria: 'fabrica' };

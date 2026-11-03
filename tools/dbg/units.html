@@ -1,0 +1,6 @@
+<html><body style="margin:0;background:#2b2620;display:flex;flex-wrap:wrap;gap:8px;padding:8px"><script type=module>
+import { UNIT_ICON } from '../../src/ui/icons.js';
+for (const [k, s] of Object.entries(UNIT_ICON)) { const d = document.createElement('div'); d.style.cssText = 'width:200px;height:150px;background:#c9b58e;color:#2e2216;display:flex;flex-direction:column;align-items:center;justify-content:center;font:12px sans-serif'; d.innerHTML = s.replace('class="ic unit"', 'style="width:180px;height:108px"') + k; document.body.appendChild(d); }
+const d2 = document.createElement('div'); d2.style.cssText = 'width:100%;display:flex;gap:8px'; for (const s of Object.values(UNIT_ICON)) d2.innerHTML += `<div style="width:40px;height:26px;background:#2b2620;color:#f3ead6">${s.replace('class="ic unit"', 'style="width:40px;height:24px"')}</div>`; document.body.appendChild(d2);
+document.title = 'done';
+</script></body></html>

@@ -75,9 +75,10 @@ export class MapView {
     const grad = g.createLinearGradient(0, 0, 0, this.h); grad.addColorStop(0, '#5e8a93'); grad.addColorStop(1, '#4d7781');
     g.fillStyle = grad; g.fillRect(0, 0, this.w, this.h);
     g.setTransform(this.dpr * k, 0, 0, this.dpr * k, this.dpr * this.ox, this.dpr * this.oy);
+    const key = this.mode + '|' + P + '|' + S.provinces.map(p => this.mode === 'moral' ? Math.round(p.morale / 5) : p.owner).join(',') + '|' + (S.opts.fog ? vis.nodes.size + ':' + [...vis.nodes].reduce((a, b) => a + b * 7, 0) : '') + '|' + Object.entries(S.rel).join() + '|' + S.nations[P].coalition;
+    if (key !== this.groupKey) this.buildGroups(S, vis, key);
     if (k < 0.42) {
       // zoom afastado: usa um bitmap em cache da camada estática
-      const key = this.mode + '|' + P + '|' + S.provinces.map(p => p.owner).join(',') + '|' + (S.opts.fog ? vis.nodes.size + ':' + [...vis.nodes].reduce((a, b) => a + b * 7, 0) : '') + '|' + Object.entries(S.rel).join() + '|' + S.nations[P].coalition;
       if (key !== this.cacheKey) {
         const CK = 0.42; if (!this.cache) { this.cache = document.createElement('canvas'); this.cache.width = Math.ceil(this.M.W * CK); this.cache.height = Math.ceil(this.M.H * CK); }
         const cg = this.cache.getContext('2d'); cg.setTransform(1, 0, 0, 1, 0, 0); cg.clearRect(0, 0, this.cache.width, this.cache.height); cg.setTransform(CK, 0, 0, CK, 0, 0);
@@ -115,45 +116,61 @@ export class MapView {
     return out;
   }
   drawTerrain(g, k) {
-    g.save(); g.lineWidth = 1.1 / k * Math.min(1, k * 2.5); g.lineCap = 'round'; g.lineJoin = 'round';
-    for (const [t, x, y, s0] of this.glyphs) {
-      const s = 7 * s0;
-      if (t === 'floresta') { g.fillStyle = 'rgba(70,90,55,.42)'; g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s * 0.6, y + s * 0.4); g.lineTo(x - s * 0.6, y + s * 0.4); g.closePath(); g.fill(); g.strokeStyle = 'rgba(70,55,40,.4)'; g.beginPath(); g.moveTo(x, y + s * 0.4); g.lineTo(x, y + s * 0.8); g.stroke(); }
-      else if (t === 'montanha') { g.strokeStyle = 'rgba(80,60,40,.55)'; g.fillStyle = 'rgba(255,250,240,.25)'; g.beginPath(); g.moveTo(x - s * 1.1, y + s * 0.6); g.lineTo(x - s * 0.2, y - s * 0.9); g.lineTo(x + s * 0.4, y); g.lineTo(x + s * 0.7, y - s * 0.4); g.lineTo(x + s * 1.3, y + s * 0.6); g.fill(); g.stroke(); }
-      else if (t === 'colina') { g.strokeStyle = 'rgba(90,70,45,.45)'; g.beginPath(); g.arc(x, y + s * 0.4, s * 0.8, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); }
-      else if (t === 'deserto') { g.fillStyle = 'rgba(120,90,50,.35)'; for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(x + (i % 2) * s * 0.7, y + (i >> 1) * s * 0.6, s * 0.12, 0, Math.PI * 2); g.fill(); } }
+    if (!this.tp) {
+      const tp = this.tp = { tree: new Path2D(), trunk: new Path2D(), mount: new Path2D(), hill: new Path2D(), dune: new Path2D() };
+      for (const [t, x, y, s0] of this.glyphs) {
+        const s = 7 * s0;
+        if (t === 'floresta') { tp.tree.moveTo(x, y - s); tp.tree.lineTo(x + s * 0.6, y + s * 0.4); tp.tree.lineTo(x - s * 0.6, y + s * 0.4); tp.tree.closePath(); tp.trunk.moveTo(x, y + s * 0.4); tp.trunk.lineTo(x, y + s * 0.8); }
+        else if (t === 'montanha') { tp.mount.moveTo(x - s * 1.1, y + s * 0.6); tp.mount.lineTo(x - s * 0.2, y - s * 0.9); tp.mount.lineTo(x + s * 0.4, y); tp.mount.lineTo(x + s * 0.7, y - s * 0.4); tp.mount.lineTo(x + s * 1.3, y + s * 0.6); }
+        else if (t === 'colina') { tp.hill.moveTo(x - s * 0.8 * Math.cos(0.3), y + s * 0.4 - s * 0.8 * Math.sin(0.3)); tp.hill.arc(x, y + s * 0.4, s * 0.8, Math.PI * 1.1, Math.PI * 1.9); }
+        else if (t === 'deserto') { for (let i = 0; i < 4; i++) { const cx = x + (i % 2) * s * 0.7, cy = y + (i >> 1) * s * 0.6; tp.dune.moveTo(cx + s * 0.12, cy); tp.dune.arc(cx, cy, s * 0.12, 0, Math.PI * 2); } }
+      }
     }
+    const tp = this.tp; g.save(); g.lineWidth = 1.1 / k * Math.min(1, k * 2.5); g.lineCap = 'round'; g.lineJoin = 'round';
+    g.fillStyle = 'rgba(70,90,55,.42)'; g.fill(tp.tree); g.strokeStyle = 'rgba(70,55,40,.4)'; g.stroke(tp.trunk);
+    g.fillStyle = 'rgba(255,250,240,.25)'; g.fill(tp.mount); g.strokeStyle = 'rgba(80,60,40,.55)'; g.stroke(tp.mount);
+    g.strokeStyle = 'rgba(90,70,45,.45)'; g.stroke(tp.hill); g.fillStyle = 'rgba(120,90,50,.35)'; g.fill(tp.dune);
     g.restore();
+  }
+  buildGroups(S, vis, key) {
+    const M = this.M, P = S.opts.player; const groups = new Map(); const fog = new Path2D();
+    for (let i = 0; i < M.provinces.length; i++) {
+      const c = this.provColor(S, i, vis); if (!groups.has(c)) groups.set(c, new Path2D()); groups.get(c).addPath(this.paths[i]);
+      if (vis && !vis.nodes.has(i)) fog.addPath(this.paths[i]);
+    }
+    const nb = new Path2D(), mb = new Path2D();
+    for (const e of this.edges) { const a = S.provinces[e.p1].owner, b = S.provinces[e.p2].owner; if (a !== b) { nb.moveTo(e.x1, e.y1); nb.lineTo(e.x2, e.y2); if (a === P || b === P) { mb.moveTo(e.x1, e.y1); mb.lineTo(e.x2, e.y2); } } }
+    this.groups = groups; this.fogPath = fog; this.natBorder = nb; this.myBorder = mb; this.groupKey = key;
   }
   drawBase(g, k, S, vis) {
     const M = this.M, P = S.opts.player;
     // bordas do mapa
     g.strokeStyle = 'rgba(20,30,30,.5)'; g.lineWidth = 3 / k; g.strokeRect(0, 0, M.W, M.H);
     // halo costeiro
-    g.strokeStyle = 'rgba(210,230,225,.22)'; g.lineWidth = 9 / k; g.lineJoin = 'round'; g.stroke(this.allLand);
-    g.strokeStyle = 'rgba(210,230,225,.18)'; g.lineWidth = 4 / k; g.stroke(this.allLand);
+    // halo costeiro é estático: desenhado uma vez num bitmap e reaproveitado
+    if (!this.halo) {
+      const HK = 0.42, c = document.createElement('canvas'); c.width = Math.ceil(M.W * HK); c.height = Math.ceil(M.H * HK);
+      const hg = c.getContext('2d'); hg.setTransform(HK, 0, 0, HK, 0, 0); hg.lineJoin = 'round';
+      hg.strokeStyle = 'rgba(210,230,225,.22)'; hg.lineWidth = 9 / HK; hg.stroke(this.allLand);
+      hg.strokeStyle = 'rgba(210,230,225,.18)'; hg.lineWidth = 4 / HK; hg.stroke(this.allLand);
+      this.halo = c;
+    }
+    g.drawImage(this.halo, 0, 0, M.W, M.H);
     // províncias
     const fog = S.opts.fog && this.mode === 'padrao';
-    for (let i = 0; i < M.provinces.length; i++) {
-      g.fillStyle = this.provColor(S, i, vis); g.fill(this.paths[i], 'evenodd');
-    }
+    for (const [c, path] of this.groups) { g.fillStyle = c; g.fill(path, 'evenodd'); }
     // textura de papel
     g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.16; g.fillStyle = this.noise; g.fill(this.allLand, 'evenodd'); g.restore();
     // névoa
-    if (fog) { g.fillStyle = 'rgba(45,40,30,.17)'; for (let i = 0; i < M.provinces.length; i++) if (!vis.nodes.has(i)) g.fill(this.paths[i], 'evenodd'); }
+    if (fog) { g.fillStyle = 'rgba(45,40,30,.17)'; g.fill(this.fogPath, 'evenodd'); }
     // linhas de província
-    g.strokeStyle = 'rgba(70,55,40,.35)'; g.lineWidth = 0.8 / k;
-    for (let i = 0; i < M.provinces.length; i++) g.stroke(this.paths[i]);
+    g.strokeStyle = 'rgba(70,55,40,.35)'; g.lineWidth = 0.8 / k; g.stroke(this.allLand);
     // desenhos de terreno
     if (k > 0.2) this.drawTerrain(g, k);
     // fronteiras de nação
-    g.beginPath();
-    for (const e of this.edges) if (S.provinces[e.p1].owner !== S.provinces[e.p2].owner) { g.moveTo(e.x1, e.y1); g.lineTo(e.x2, e.y2); }
-    g.strokeStyle = 'rgba(250,245,232,.8)'; g.lineWidth = 5 / k; g.stroke();
-    g.strokeStyle = 'rgba(45,32,20,.9)'; g.lineWidth = 2.2 / k; g.stroke();
-    // contorno do jogador
-    g.beginPath(); for (const e of this.edges) { const a = S.provinces[e.p1].owner === P, b = S.provinces[e.p2].owner === P; if (a !== b) { g.moveTo(e.x1, e.y1); g.lineTo(e.x2, e.y2); } }
-    g.strokeStyle = 'rgba(55,105,45,.95)'; g.lineWidth = 3 / k; g.stroke();
+    g.strokeStyle = 'rgba(250,245,232,.8)'; g.lineWidth = 5 / k; g.stroke(this.natBorder);
+    g.strokeStyle = 'rgba(45,32,20,.9)'; g.lineWidth = 2.2 / k; g.stroke(this.natBorder);
+    g.strokeStyle = 'rgba(55,105,45,.95)'; g.lineWidth = 3 / k; g.stroke(this.myBorder);
     // costa
     g.strokeStyle = 'rgba(40,50,45,.6)'; g.lineWidth = 1 / k; g.stroke(this.allLand);
   }

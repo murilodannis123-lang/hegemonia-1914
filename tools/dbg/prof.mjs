@@ -1,0 +1,21 @@
+import { createRequire } from 'module'; const { chromium } = createRequire(import.meta.url)('playwright');
+import { serve } from '../test/serve.mjs';
+const srv = await serve(); const b = await chromium.launch(); const p = await (await b.newContext({ viewport: { width: 1366, height: 768 } })).newPage();
+await p.goto(`http://localhost:${srv.address().port}/`); await p.waitForSelector('.mbtn');
+await p.evaluate(() => window.__game.newGame({ player: 'fra', seed: 5 })); await p.waitForTimeout(300);
+console.log(await p.evaluate(async () => {
+  const g = window.__game, v = g.view, S = g.S, M = g.M; const V = await import('/src/engine/vision.js'); const vis = V.computeVision(S, M, 'fra'); g.setSpeed(0);
+  v.k = 0.6; v.clamp(); v.draw(S, vis, 0); const ctx = v.g; const out = {};
+  const T = (name, fn) => { ctx.getImageData(0,0,1,1); const t0 = performance.now(); for (let i = 0; i < 10; i++) { fn(); ctx.getImageData(0,0,1,1); } out[name] = +((performance.now() - t0) / 10).toFixed(1); };
+  ctx.setTransform(v.dpr * v.k, 0, 0, v.dpr * v.k, v.dpr * v.ox, v.dpr * v.oy);
+  T('halo', () => { ctx.lineWidth = 9 / v.k; ctx.strokeStyle = 'rgba(210,230,225,.22)'; ctx.stroke(v.allLand); });
+  T('groups', () => { for (const [c, path] of v.groups) { ctx.fillStyle = c; ctx.fill(path, 'evenodd'); } });
+  T('noise', () => { ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = .16; ctx.fillStyle = v.noise; ctx.fill(v.allLand, 'evenodd'); ctx.restore(); });
+  T('lines', () => { ctx.lineWidth = .8 / v.k; ctx.stroke(v.allLand); });
+  T('terrain', () => v.drawTerrain(ctx, v.k));
+  T('borders', () => { ctx.lineWidth = 5 / v.k; ctx.stroke(v.natBorder); });
+  T('labels', () => v.drawLabels(S, vis));
+  T('stacks', () => v.drawStacks(S, vis, 0, null));
+  return out;
+}));
+await b.close(); srv.close();

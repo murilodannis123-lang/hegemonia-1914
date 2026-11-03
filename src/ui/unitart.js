@@ -94,6 +94,6 @@ export function unitArtSVG(u, nat, size = '') {
 }
 
 // sprites pintados (gerados para o jogo) — quando existem, substituem o desenho vetorial
-export const UNIT_PNG = new Set(['infantaria', 'cavalaria', 'choque', 'blindado', 'artleve', 'artilharia', 'tanqueleve', 'tanquepesado', 'caca', 'bombardeiro', 'zepelim', 'couracado']);
+export const UNIT_PNG = new Set(['infantaria', 'cavalaria', 'choque', 'blindado', 'artleve', 'artilharia', 'tanqueleve', 'tanquepesado', 'caca', 'bombardeiro', 'zepelim', 'couracado', 'antiaereo', 'ferroviario', 'balao', 'submarino', 'cruzador', 'transporte']);
 export const unitPngUrl = u => `assets/units/${u}.png`;
 export function unitHTML(u, nat, cls = 'ic unit') { return UNIT_PNG.has(u) ? `<img class="${cls} spr" src="${unitPngUrl(u)}" alt="">` : unitArtSVG(u, nat, `class="${cls}"`); }

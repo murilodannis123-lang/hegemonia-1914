@@ -18,6 +18,7 @@ export class MapView {
     this.allLand = new Path2D(); this.paths.forEach(p => this.allLand.addPath(p));
     this.buildEdges();
     this.glyphs = this.makeGlyphs();
+    this.stamp = {}; for (const k of ['montanha', 'colina', 'floresta', 'deserto', 'cidade', 'capital']) { const i = new Image(); i.src = `assets/map/${k}.png`; i.onload = () => { this.cacheKey = null; }; this.stamp[k] = i; }
     this.resImg = {}; for (const [r, svgs] of Object.entries(RES_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgs.replace(' xmlns="http://www.w3.org/2000/svg"', '').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" ')); this.resImg[r] = i; }
     this.noise = this.makeNoise();
     this.artImg = {};
@@ -113,13 +114,27 @@ export class MapView {
     const M = this.M; let seed = 7; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
     const out = [];
     for (const p of M.provinces) {
-      const t = p.terrain; const n = { floresta: 7, montanha: 5, colina: 4, deserto: 6 }[t]; if (!n) continue;
+      const t = p.terrain; const n = { floresta: 3, montanha: 3, colina: 2, deserto: 2 }[t]; if (!n) continue;
       for (let i = 0, tries = 0; i < n && tries < 40; tries++) {
-        const a = rnd() * Math.PI * 2, r = 18 + rnd() * 55; const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
+        const a = rnd() * Math.PI * 2, r = 28 + rnd() * 50; const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
         if (M.nodeAt(x, y) !== p.id) continue; out.push([t, x, y, 0.8 + rnd() * 0.5]); i++;
       }
     }
     return out;
+  }
+  drawStamps(g, k, clipView) {
+    let x0 = -1e9, y0 = -1e9, x1 = 1e9, y1 = 1e9;
+    if (clipView) { [x0, y0] = this.toWorld(-60, -60); [x1, y1] = this.toWorld(this.w + 60, this.h + 60); }
+    const SZ = { montanha: [56, 38], colina: [40, 19], floresta: [44, 32], deserto: [44, 16] };
+    for (const [t, x, y, s0] of this.glyphs) {
+      if (x < x0 || x > x1 || y < y0 || y > y1) continue; const im = this.stamp[t]; if (!im || !im.complete || !im.naturalWidth) continue;
+      const [w, h] = SZ[t]; const f = s0; g.drawImage(im, x - w * f / 2, y - h * f, w * f, h * f);
+    }
+    for (const p of this.M.provinces) {
+      if (!p.city || p.x < x0 || p.x > x1 || p.y < y0 || p.y > y1) continue;
+      const im = this.stamp[p.capital ? 'capital' : 'cidade']; if (!im || !im.complete || !im.naturalWidth) continue;
+      const w = p.capital ? 42 : 30, h = w * im.naturalHeight / im.naturalWidth; g.drawImage(im, p.x + 18, p.y - h * 0.7, w, h);
+    }
   }
   drawTerrain(g, k) {
     if (!this.tp) {
@@ -184,7 +199,7 @@ export class MapView {
     // linhas de província
     g.strokeStyle = 'rgba(70,55,40,.35)'; g.lineWidth = 0.8 / k; g.stroke(this.allLand);
     // desenhos de terreno
-    if (k > 0.2) this.drawTerrain(g, k);
+    this.drawStamps(g, k, g === this.g);
     // fronteiras de nação
     g.strokeStyle = 'rgba(250,245,232,.8)'; g.lineWidth = 5 / k; g.stroke(this.natBorder);
     g.strokeStyle = 'rgba(45,32,20,.9)'; g.lineWidth = 2.2 / k; g.stroke(this.natBorder);

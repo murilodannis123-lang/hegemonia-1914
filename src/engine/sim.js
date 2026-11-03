@@ -400,7 +400,15 @@ function combat(S, M) {
         dealt.push([f, dmg, a.nat]);
         if (land && !aDefending && fDefending) damageBuildings(S, M, node, res.bld * 0.25 * stackHP(f).hp / totHP);
       }
-      const n = M.nodes[node]; battleMark(S, M, node, n.x, n.y, [a.nat, foes[0].nat]);
+      const n = M.nodes[node];
+      if (!S.battles[node] && land) {
+        const P = S.opts.player, ow = S.provinces[node].owner, att = ow === a.nat ? foes[0].nat : a.nat;
+        if ((ow === P || att === P) && !S.news.some(x => x.type === 'batalha' && x.node === node && S.hour - x.h < 24)) {
+          event(S, ow, `${M.provinces[node].name} está sendo atacada por ${nname(att)}!`, 'alerta', node);
+          news(S, `Tropas de ${nname(att)} e ${nname(ow)} se enfrentam em ${M.provinces[node].name}. Os hospitais de campanha estão lotados.`, 'batalha', { title: `Combates em ${M.provinces[node].name}`, nats: [att, ow], node });
+        }
+      }
+      battleMark(S, M, node, n.x, n.y, [a.nat, foes[0].nat]);
     }
   }
   // fogo de alcance (artilharia, navios): pilhas não engajadas em corpo a corpo

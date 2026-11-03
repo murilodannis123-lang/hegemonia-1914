@@ -1,0 +1,21 @@
+import { createRequire } from 'module'; const { chromium, devices } = createRequire(import.meta.url)('playwright');
+import { serve } from '../test/serve.mjs';
+const srv = await serve(); const b = await chromium.launch(); const ctx = await b.newContext({ ...devices['iPhone 13'] }); const p = await ctx.newPage();
+const errs = []; p.on('pageerror', e => errs.push(e.message));
+await p.goto(`http://localhost:${srv.address().port}/`); await p.waitForSelector('.mbtn');
+await p.evaluate(() => { window.__game.newGame({ player: 'ita', seed: 5 }); const g = window.__game; g.step(30); g.setSpeed(0); g.selectProv(g.S.nations.ita.capital); });
+await p.waitForTimeout(600); await p.screenshot({ path: '/tmp/claude-0/phone1.png' });
+await p.evaluate(() => { const g = window.__game; g.openWin('provincia', { prov: g.S.nations.ita.capital, tab: 'terra' }); });
+await p.waitForTimeout(300); await p.screenshot({ path: '/tmp/claude-0/phone2.png' });
+// toque real numa tropa e depois no mapa
+await p.evaluate(() => window.__game.closeWin());
+const h = await p.evaluate(() => { const g = window.__game; const st = g.S.stacks.find(s => s.nat === 'ita'); g.view.centerOn(st.x, st.y, 0.7); g.selectProv(-1); return st.id; });
+await p.waitForTimeout(300);
+const pos = await p.evaluate(id => window.__game.view.hits.find(x => x.id === id), h);
+await p.touchscreen.tap(pos.x, pos.y - 12); await p.waitForTimeout(400);
+const sel = await p.evaluate(() => !!document.querySelector('#panel .rbtn'));
+await p.touchscreen.tap(100, 150); await p.waitForTimeout(300);
+const mv = await p.evaluate(id => { const st = window.__game.S.stacks.find(s => s.id === id); return st.path.length; }, h);
+console.log('toque seleciona:', sel, 'toque move (passos na rota):', mv, 'erros:', errs);
+await p.screenshot({ path: '/tmp/claude-0/phone3.png' });
+await b.close(); srv.close();

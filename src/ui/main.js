@@ -22,6 +22,7 @@ const UNIT_PHOTO = { infantaria: 'infantaria', cavalaria: 'cavalaria', choque: '
 const BUILD_PHOTO = { recrutamento: 'multidao', quartel: 'infantaria', oficina: 'fabrica', fabrica: 'fabrica', ferrovia: 'trem', porto: 'navio', aerodromo: 'aviao', forte: 'trincheira' };
 const banner = (cat, i = 0) => `url(&quot;${photoFor(cat, i)}&quot;)`;
 
+let newsUnread = false;
 let M, S = null, view, vis = null, speed = 1, acc = 0, lastT = 0, seenEvents = 0, unread = 0;
 let selStack = null, selProv = -1, airMode = 'patrol', win = null, lastUi = 0, lastWin = 0, previewKey = '';
 
@@ -59,7 +60,7 @@ function afterStep() {
   const ev = S.events; const fresh = ev.filter(e => e.id > seenEvents);
   if (fresh.length) { seenEvents = Math.max(...fresh.map(e => e.id)); unread += fresh.length; renderSide(); fresh.slice(-4).forEach(e => toast(e.text, e.type, e.node)); }
   if (selStack && !S.stacks.some(s => s.id === selStack)) selStack = null;
-  if (S.hour % 24 === 0) { save('auto'); if (S.hour % 24 === 0) toast(`Dia ${day(S)} começou. O jornal tem notícias novas.`, 'info'); }
+  if (S.hour % 24 === 0) { save('auto'); newsUnread = true; renderSide(); }
   if (S.winner) { save('auto'); showEnd(); }
 }
 
@@ -148,14 +149,14 @@ function renderTop() {
 const SIDE = [['jornal', 'Jornal'], ['diplomacia', 'Diplomacia'], ['recursos', 'Recursos'], ['bolsa', 'Bolsa de valores'], ['coligacoes', 'Coligações'], ['espionagem', 'Espionagem'], ['provincias', 'Províncias'], ['exercitos', 'Exércitos'], ['eventos', 'Avisos']];
 function renderSide() {
   const props = S ? S.proposals.filter(p => p.to === S.opts.player).length : 0;
-  $('#side').innerHTML = SIDE.map(([k, t]) => `<button data-w="${k}">${UI_ICON[k === 'eventos' ? 'alerta' : k]}<span class="tip">${t}</span>${k === 'eventos' && unread ? `<span class="badge">${unread > 99 ? '99+' : unread}</span>` : ''}${k === 'diplomacia' && props ? `<span class="badge">${props}</span>` : ''}</button>`).join('');
+  $('#side').innerHTML = SIDE.map(([k, t]) => `<button data-w="${k}">${UI_ICON[k === 'eventos' ? 'alerta' : k]}<span class="tip">${t}</span>${k === 'jornal' && newsUnread ? '<span class="badge">!</span>' : ''}${k === 'eventos' && unread ? `<span class="badge">${unread > 99 ? '99+' : unread}</span>` : ''}${k === 'diplomacia' && props ? `<span class="badge">${props}</span>` : ''}</button>`).join('');
 }
 function renderSpeed() {
   const modes = { padrao: 'Mapa', politico: 'Político', recursos: 'Recursos', moral: 'Moral' };
   $('#speed').innerHTML = [['pausa', 0], ['play', 1], ['rapido', 2], ['turbo', 3]].map(([i, v]) => `<button data-sp="${v}" class="${speed === v ? 'on' : ''}" title="${['Pausar', 'Normal', 'Rápido', 'Muito rápido'][v]}">${UI_ICON[i]}</button>`).join('') + `<button class="mode" data-mode="1">${modes[view.mode]}</button>`;
 }
 document.addEventListener('click', e => {
-  const w = e.target.closest('[data-w]'); if (w && S && !e.target.closest('#modal')) { if (w.dataset.w === 'eventos') { unread = 0; renderSide(); } openWin(w.dataset.w); return; }
+  const w = e.target.closest('[data-w]'); if (w && S && !e.target.closest('#modal')) { if (w.dataset.w === 'eventos') { unread = 0; renderSide(); } if (w.dataset.w === 'jornal') { newsUnread = false; renderSide(); } openWin(w.dataset.w); return; }
   const sp = e.target.closest('[data-sp]'); if (sp) { speed = +sp.dataset.sp; acc = 0; renderSpeed(); return; }
   if (e.target.closest('[data-mode]')) { const ms = ['padrao', 'politico', 'recursos', 'moral']; view.mode = ms[(ms.indexOf(view.mode) + 1) % ms.length]; renderSpeed(); }
 });

@@ -140,7 +140,8 @@ export function declareWar(S, M, a, b) {
   setRel(S, a, b, 'guerra');
   S.warStart = S.warStart || {}; S.warStart[relKey(a, b)] = S.hour;
   opinion(S, b, a, -60);
-  news(S, `${nname(a)} declara guerra a ${nname(b)}!`, 'guerra');
+  news(S, `As tropas de ${nname(a)} cruzam a fronteira. ${nname(b)} mobiliza seus exércitos.`, 'guerra', { title: `${nname(a)} declara guerra a ${nname(b)}!`, nats: [a, b] });
+  communique(S, a, 'guerra', b); communique(S, b, 'atacado', a);
   event(S, b, `${nname(a)} declarou guerra contra nós!`, 'alerta');
   event(S, a, `Declaramos guerra a ${nname(b)}.`, 'info');
   // aliados de b ficam irritados
@@ -158,7 +159,7 @@ export function propose(S, M, from, to, type) {
     const ans = aiAnswer(S, M, to, from, type);
     if (ans.accept) {
       setRel(S, from, to, type === 'paz' ? 'paz' : 'passagem');
-      if (type === 'paz') news(S, `${nname(from)} e ${nname(to)} assinam a paz.`, 'paz');
+      if (type === 'paz') news(S, `Os diplomatas de ${nname(from)} e ${nname(to)} assinam um tratado de paz.`, 'paz', { title: `Paz entre ${nname(from)} e ${nname(to)}`, nats: [from, to] });
       event(S, from, `${nname(to)} aceitou: ${type === 'paz' ? 'paz assinada' : 'direito de passagem concedido'}.`, 'diplomacia');
     } else event(S, from, `${nname(to)} recusou ${type === 'paz' ? 'a paz' : 'o direito de passagem'}.`, 'diplomacia');
     return { ok: true, accept: ans.accept, msg: ans.text };
@@ -172,9 +173,11 @@ export function answerProposal(S, M, nat, pid, accept) {
   const p = S.proposals.find(x => x.id === pid && x.to === nat); if (!p) return no('Proposta expirada.');
   S.proposals = S.proposals.filter(x => x !== p);
   if (!accept) { opinion(S, p.from, nat, -10); return ok('Recusada.'); }
-  if (p.type === 'paz') { setRel(S, p.from, nat, 'paz'); news(S, `${nname(p.from)} e ${nname(nat)} assinam a paz.`, 'paz'); }
+  if (p.type === 'paz') { setRel(S, p.from, nat, 'paz'); news(S, `Os diplomatas de ${nname(p.from)} e ${nname(nat)} assinam um tratado de paz.`, 'paz', { title: `Paz entre ${nname(p.from)} e ${nname(nat)}`, nats: [p.from, nat] }); }
   else if (p.type === 'passagem') setRel(S, p.from, nat, 'passagem');
   else if (p.type === 'coligacao') { const c = S.coalitions[p.coal]; if (!c) return no('Coligação não existe mais.'); return joinCoalition(S, M, nat, c.id); }
+  else if (p.type === 'entrar') { const c = S.coalitions[p.coal]; if (!c) return no('Coligação não existe mais.'); return joinCoalition(S, M, p.from, c.id); }
+  else if (p.type === 'alianca') { const r = createCoalition(S, M, nat, 'Aliança ' + nname(nat).split(' ')[0] + '-' + nname(p.from).split(' ')[0]); if (!r.ok) return r; return joinCoalition(S, M, p.from, S.nations[nat].coalition); }
   opinion(S, p.from, nat, 15);
   return ok('Aceita.');
 }
@@ -184,7 +187,7 @@ export function revokePassage(S, M, a, b) { if (rel(S, a, b) !== 'passagem') ret
 export function createCoalition(S, M, nat, name) {
   const n = S.nations[nat]; if (n.coalition) return no('Você já está em uma coligação.');
   const id = S.nextCoal++; S.coalitions[id] = { id, name: (name || `Entente ${id}`).slice(0, 32), members: [nat], founder: nat, h: S.hour };
-  n.coalition = id; news(S, `${nname(nat)} funda a coligação "${S.coalitions[id].name}".`, 'coligacao');
+  n.coalition = id; news(S, `${nname(nat)} funda a coligação "${S.coalitions[id].name}".`, 'coligacao', { title: `Nasce a ${S.coalitions[id].name}`, nats: [nat] });
   return ok('Coligação criada.');
 }
 export function joinCoalition(S, M, nat, cid) {
@@ -192,7 +195,8 @@ export function joinCoalition(S, M, nat, cid) {
   if (n.coalition) leaveCoalition(S, nat);
   if (c.members.length >= 4) return no('Coligação cheia (máx. 4).');
   if (c.members.some(m => rel(S, m, nat) === 'guerra')) { for (const m of c.members) setRel(S, m, nat, 'paz'); }
-  c.members.push(nat); n.coalition = cid; news(S, `${nname(nat)} entra na coligação "${c.name}".`, 'coligacao');
+  c.members.push(nat); n.coalition = cid; news(S, `${nname(nat)} entra na coligação "${c.name}", que agora reúne ${c.members.map(nname).join(', ')}.`, 'coligacao', { title: `${nname(nat)} adere à ${c.name}`, nats: [...c.members] });
+  communique(S, nat, 'coligacao', null, c.name);
   return ok('Entrou na coligação.');
 }
 export function inviteCoalition(S, M, from, to) {
@@ -230,4 +234,53 @@ export function spy(S, M, nat, target, kind) {
   }
   if (kind === 'moral') { for (let j = 0; j < 3 && provs.length; j++) { const [p] = provs[(rngNext(S) * provs.length) | 0]; p.morale = Math.max(5, p.morale - 15); } return ok('Propaganda espalhada: moral inimiga em queda.'); }
   return no('?');
+}
+
+// ---------------- relações diretas: visitas e presentes
+export const VISIT_COST = 5000;
+export function visit(S, M, from, to) {
+  const n = S.nations[from], t = S.nations[to]; if (!t || !t.alive || from === to) return no('Inválido.');
+  if (rel(S, from, to) === 'guerra') return no('Não dá para visitar um país com o qual estamos em guerra.');
+  n.visits = n.visits || {}; const last = n.visits[to] ?? -999;
+  if (S.hour - last < 48) return no(`Uma nova visita só daqui a ${Math.ceil((48 - (S.hour - last)) / 24 * 24)} h.`);
+  if (n.res.dinheiro < VISIT_COST) return no('Dinheiro insuficiente.');
+  n.res.dinheiro -= VISIT_COST; n.visits[to] = S.hour;
+  const gain = 8 + Math.round(rngNext(S) * 8) + (t.personality === 'defensivo' ? 3 : 0);
+  opinion(S, to, from, gain);
+  const cap = t.capital >= 0 ? M.provinces[t.capital].name : nname(to);
+  news(S, `Uma delegação de ${nname(from)} foi recebida com honras em ${cap}. Banquetes, desfiles e conversas a portas fechadas.`, 'visita', { title: `Visita oficial a ${cap}`, nats: [from, to] });
+  return ok(`Visita oficial a ${cap}: relações +${gain}.`);
+}
+export function gift(S, M, from, to, r, amt) {
+  const n = S.nations[from], t = S.nations[to]; amt = Math.floor(amt); if (!t || !t.alive || from === to || !(amt > 0)) return no('Inválido.');
+  if (rel(S, from, to) === 'guerra') return no('Não se envia presentes ao inimigo.');
+  if (n.res[r] < amt) return no('Estoque insuficiente.');
+  n.res[r] -= amt; t.res[r] += amt;
+  const val = r === 'dinheiro' ? amt : amt * (S.market.price[r] || 1.5);
+  const gain = Math.min(25, Math.round(val / 1500));
+  opinion(S, to, from, gain);
+  return ok(`${nname(to)} agradece o presente. Relações +${gain}.`);
+}
+export const relLabel = v => v >= 60 ? 'Excelente' : v >= 30 ? 'Amistosa' : v >= 10 ? 'Cordial' : v > -10 ? 'Neutra' : v > -40 ? 'Tensa' : 'Hostil';
+
+// ---------------- comunicados oficiais (IA e jogador)
+const COMM = {
+  guerra: ['Nossas tropas marcham contra {B}. A vitória será rápida.', 'A paciência acabou. {B} pagará por suas provocações.', 'Declaramos guerra a {B}. Que a história julgue quem começou.', 'Soldados! A pátria chama. Avante contra {B}!'],
+  atacado: ['{B} nos apunhalou pelas costas. Resistiremos até o último homem!', 'Covardes! {B} atacou sem motivo. Nossa resposta virá.', 'A nação está unida contra o agressor {B}.'],
+  paz: ['Assinamos a paz com {B}. É hora de reconstruir.', 'A guerra contra {B} terminou. Honra aos que tombaram.'],
+  coligacao: ['Orgulhosos de integrar a {C}. Juntos somos invencíveis.', 'Selamos aliança na {C}. Que nossos inimigos tremam.'],
+  vitoria: ['{P} é nossa! Nenhuma força nos deterá.', 'A bandeira tremula sobre {P}. Glória aos bravos!'],
+  provocacao: ['Nossos estoques estão cheios e nossas fábricas não param. Quem se atreve?', 'Vizinhos, observem bem nossas fronteiras. Estamos prontos.', 'A economia cresce, o exército cresce. O futuro é nosso.', 'Rumores de fraqueza são exagerados. Venham conferir.', 'Nenhum palmo de terra será entregue.'],
+};
+export function communique(S, nat, kind, other, extra) {
+  const n = S.nations[nat]; if (!n || !n.ai || n.rebel) return;
+  if (kind !== 'guerra' && kind !== 'atacado' && rngNext(S) > 0.6) return;
+  const list = COMM[kind]; const t = list[(rngNext(S) * list.length) | 0].replace('{B}', other ? nname(other) : '').replace('{C}', extra || '').replace('{P}', extra || '');
+  news(S, t, 'comunicado', { title: t.split(/[.!]/)[0].slice(0, 70), nats: [nat, ...(other ? [other] : [])], from: nat });
+}
+export function writeArticle(S, nat, title, text, photo) {
+  title = String(title || '').trim().slice(0, 80); text = String(text || '').trim().slice(0, 1200);
+  if (!title) return no('Escreva um título.');
+  news(S, text, 'comunicado', { title, nats: [nat], from: nat, photo: photo || null });
+  return ok('Artigo publicado no jornal.');
 }

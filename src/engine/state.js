@@ -53,7 +53,7 @@ export function newGame(M, opts) {
   }
   // algumas províncias com cavalaria/artilharia leve na capital
   for (const n of NATIONS) { const c = S.nations[n.id].capital; if (c >= 0) { addUnitsAt(S, M, n.id, c, { cavalaria: 2 }); addUnitsAt(S, M, n.id, c, { artleve: 2 }); } }
-  news(S, `Começa a Grande Guerra! ${NATIONS.length} nações disputam a hegemonia da Europa.`, 'geral');
+  news(S, `${NATIONS.length} nações disputam a hegemonia da Europa. Os generais aguardam ordens.`, 'geral', { title: 'Começa a Grande Guerra!' });
   return S;
 }
 

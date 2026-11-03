@@ -239,6 +239,7 @@ export function aiDaily(S, M) {
   for (const n of alive) for (const m of alive) if (n !== m && !neigh[n.id].has(m.id)) {
     const a = S.nations[n.id].capital, b = S.nations[m.id].capital; if (a >= 0 && b >= 0 && M.dist(a, b) < 700) neigh[n.id].add(m.id);
   }
+  const P = S.opts.player;
   for (const n of alive) {
     if (!n.ai) continue;
     const nat = n.id; const my = power[nat];
@@ -250,14 +251,14 @@ export function aiDaily(S, M) {
       const ratio = my / Math.max(1, power[w]); const k = relKey(nat, w); if (S.warStart[k] == null) S.warStart[k] = S.hour;
       const len = (S.hour - S.warStart[k]) / 24;
       if ((ratio < 0.55 && len > 2) || (len > 12 && ratio < 1.1 && rngNext(S) < 0.08)) {
-        if (S.nations[w].ai) { const a = aiAnswer(S, M, w, nat, 'paz'); if (a.accept) { C.setRel(S, nat, w, 'paz'); news(S, `${nname(nat)} e ${nname(w)} assinam a paz.`, 'paz'); } }
+        if (S.nations[w].ai) { const a = aiAnswer(S, M, w, nat, 'paz'); if (a.accept) { C.setRel(S, nat, w, 'paz'); news(S, `${nname(nat)} e ${nname(w)} assinam a paz.`, 'paz', { title: `Paz entre ${nname(nat)} e ${nname(w)}`, nats: [nat, w] }); C.communique(S, nat, 'paz', w); } }
         else if (!S.proposals.some(p => p.from === nat && p.to === w && p.type === 'paz') && rngNext(S) < 0.35) C.propose(S, M, nat, w, 'paz');
       }
     }
     // ---- declarar guerra
     const maxWars = { agressivo: 2, equilibrado: 1, defensivo: 1, oportunista: 2 }[n.personality];
     const minDay = n.aiS.warDay + (S.opts.difficulty === 'facil' ? 3 : 0);
-    if (d >= minDay && ws.length < maxWars && rngNext(S) < 0.35 * D.aiAggro) {
+    if (d >= minDay && ws.length < maxWars && rngNext(S) < 0.25 * D.aiAggro) {
       const thr = { agressivo: 1.0, equilibrado: 1.25, defensivo: 1.6, oportunista: 1.3 }[n.personality] / D.aiAggro * (d < 8 ? 1.15 : 1);
       let best = null, bs = 0;
       for (const o of neigh[nat]) {
@@ -282,11 +283,22 @@ export function aiDaily(S, M) {
       }
     }
     // ---- convite ao jogador (quando têm inimigo comum)
-    const P = S.opts.player;
     if (n.coalition && S.nations[P] && S.nations[P].alive && !S.nations[P].coalition && rngNext(S) < 0.05) {
       const c = S.coalitions[n.coalition];
       if (c && c.members.length < 4 && ws.some(w => rel(S, P, w) === 'guerra') && rel(S, nat, P) !== 'guerra' && !S.proposals.some(p => p.type === 'coligacao' && p.to === P)) C.inviteCoalition(S, M, nat, P);
     }
+    // ---- aliados de coligação entram nas guerras dos parceiros
+    if (n.coalition && S.coalitions[n.coalition] && ws.length < 3 && rngNext(S) < 0.25) {
+      for (const m of S.coalitions[n.coalition].members) if (m !== nat) for (const w of wars(S, m)) {
+        if (rel(S, nat, w) === 'paz' && power[nat] > power[w] * 0.5 && (neigh[nat].has(w) || rngNext(S) < 0.3)) { C.declareWar(S, M, nat, w); break; }
+      }
+    }
+    // ---- IA que gosta do jogador propõe aliança
+    if (S.nations[P]?.alive && !n.coalition && (n.opinion[P] || 0) >= 45 && rel(S, nat, P) !== 'guerra' && rngNext(S) < 0.12 && !S.proposals.some(p => p.from === nat && p.to === P)) {
+      if (S.nations[P].coalition) { const c = S.coalitions[S.nations[P].coalition]; if (c && c.members.length < 4) S.proposals.push({ id: S.hour * 100 + S.proposals.length, from: nat, to: P, type: 'entrar', coal: c.id, h: S.hour }), event(S, P, `${nname(nat)} quer entrar na sua coligação "${c.name}".`, 'diplomacia'); }
+      else { S.proposals.push({ id: S.hour * 100 + S.proposals.length, from: nat, to: P, type: 'alianca', h: S.hour }); event(S, P, `${nname(nat)} propõe uma aliança (nova coligação).`, 'diplomacia'); }
+    }
+    if (rngNext(S) < 0.04) C.communique(S, nat, 'provocacao');
     // opinião: vizinhos em paz melhoram aos poucos
     for (const o of neigh[nat]) if (rel(S, nat, o) === 'paz') C.opinion(S, nat, o, 1);
   }

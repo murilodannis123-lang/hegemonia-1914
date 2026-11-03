@@ -177,11 +177,11 @@ function dailyMorale(S, M) {
     const sp = S.provinces[i]; if (sp.owner === 'reb') continue;
     const t = moraleTarget(S, M, i); const d = t - sp.morale; sp.morale += Math.sign(d) * Math.min(Math.abs(d), 7);
     // rebelião
-    if (sp.morale < 25 && S.nations[sp.owner].capital !== i && rngNext(S) < (25 - sp.morale) / 45) {
+    if (sp.morale < 22 && S.nations[sp.owner].capital !== i && rngNext(S) < (22 - sp.morale) / 80) {
       const n = 2 + ((rngNext(S) * 3) | 0);
       addStack(S, M, 'reb', i, { infantaria: n });
       event(S, sp.owner, `Rebelião em ${M.provinces[i].name}! A moral baixa levou ${n} batalhões de rebeldes às ruas.`, 'alerta', i);
-      news(S, `Revolta em ${M.provinces[i].name} (${nname(sp.owner)}).`, 'rebeliao');
+      news(S, `Insatisfeita, a população de ${M.provinces[i].name} pega em armas contra o governo de ${nname(sp.owner)}.`, 'rebeliao', { title: `Revolta em ${M.provinces[i].name}`, nats: [sp.owner] });
     }
   }
 }
@@ -275,25 +275,26 @@ export function tryCapture(S, M, nat, node) {
   const pname = M.provinces[node].name;
   event(S, nat, `Conquistamos ${pname}!`, 'vitoria', node);
   event(S, old, `Perdemos ${pname} para ${nname(nat)}.`, 'derrota', node);
-  if (M.provinces[node].city || M.provinces[node].capital) news(S, `${nname(nat)} toma ${pname} de ${nname(old)}.`, 'conquista');
+  if (M.provinces[node].city || M.provinces[node].capital || nat === S.opts.player || old === S.opts.player) news(S, `Após combates, as forças de ${nname(nat)} assumem o controle de ${pname}, até então em mãos de ${nname(old)}.`, 'conquista', { title: `${nname(nat)} toma ${pname}`, nats: [nat, old], node });
   if (old !== 'reb') {
     const on = S.nations[old];
     if (on.capital === node) {
       // muda a capital
       let best = -1, bv = -1; S.provinces.forEach((q, i) => { if (q.owner === old) { const v = M.provinces[i].vp * 10 + q.morale; if (v > bv) { bv = v; best = i; } } });
       on.capital = best;
-      news(S, `A capital de ${nname(old)}, ${pname}, caiu! ${best >= 0 ? 'O governo foge para ' + M.provinces[best].name + '.' : ''}`, 'capital');
+      news(S, `A capital de ${nname(old)}, ${pname}, caiu nas mãos de ${nname(nat)}. ${best >= 0 ? 'O governo foge para ' + M.provinces[best].name + '.' : ''}`, 'capital', { title: `Cai ${pname}!`, nats: [nat, old], node });
     }
     if (!S.provinces.some(q => q.owner === old)) eliminate(S, M, old, nat);
   }
   if (nat !== 'reb') { const n = S.nations[nat]; if (n.capital < 0) n.capital = node; }
+  if (M.provinces[node].city && nat !== 'reb') communiqueHook && communiqueHook(S, nat, 'vitoria', old, pname);
   return true;
 }
 function eliminate(S, M, nat, by) {
   const n = S.nations[nat]; if (!n.alive) return;
   n.alive = false; for (const o of S.stacks) if (o.nat === nat) o.dead = true;
   if (n.coalition) leaveCoalition(S, nat);
-  news(S, `${nname(nat)} foi eliminada por ${nname(by)}.`, 'eliminacao');
+  news(S, `Sem território, o governo de ${nname(nat)} se rende a ${nname(by)}.`, 'eliminacao', { title: `${nname(nat)} deixa de existir`, nats: [nat, by] });
   event(S, S.opts.player, `${nname(nat)} foi eliminada da guerra.`, 'info');
 }
 export function leaveCoalition(S, nat) {
@@ -491,7 +492,7 @@ function checkVictory(S, M) {
     const members = g.startsWith('c') ? S.coalitions[g.slice(1)].members : [g];
     const won = members.includes(P);
     S.winner = { type: won ? 'vitoria' : 'derrota', h: S.hour, members, text: won ? 'Sua nação conquistou a hegemonia da Europa!' : `${members.map(nname).join(', ')} conquistou a hegemonia da Europa.` };
-    news(S, `Fim da guerra: ${members.map(nname).join(', ')} domina a Europa.`, 'fim');
+    news(S, `${members.map(nname).join(', ')} domina a Europa.`, 'fim', { title: 'Fim da Grande Guerra', nats: members });
     return;
   }
   const alive = Object.values(S.nations).filter(n => n.alive && !n.rebel);
@@ -500,6 +501,7 @@ function checkVictory(S, M) {
 
 // ---------------- passo principal
 import { aiTick, aiDaily } from './ai.js';
+import { communique as communiqueHook } from './commands.js';
 import { marketDaily } from './market.js';
 export function step(S, M) {
   S.hour++;

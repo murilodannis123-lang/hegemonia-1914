@@ -34,7 +34,7 @@ export function newGame(M, opts) {
     S.nations[n.id] = {
       id: n.id, alive: true, ai: !isPlayer, res, capital: -1, coalition: null, opinion: {},
       personality: PERSONALITIES[(rngNext(S) * PERSONALITIES.length) | 0], spies: [], kills: 0, losses: 0,
-      aiS: { nextThink: (rngNext(S) * 6) | 0, warDay: 2 + ((rngNext(S) * 5) | 0), targets: {} },
+      aiS: { nextThink: (rngNext(S) * 6) | 0, warDay: 3 + ((rngNext(S) * 6) | 0), targets: {} },
       trade: { bought: 0, sold: 0 }, lastFulfil: { comida: 1, materiais: 1, energia: 1 },
     };
   }
@@ -46,13 +46,13 @@ export function newGame(M, opts) {
   // edifícios iniciais e guarnições
   for (const p of M.provinces) {
     const sp = S.provinces[p.id];
-    if (p.capital) { sp.b.recrutamento = 1; sp.b.quartel = 1; sp.b.forte = 1; }
-    else if (p.city) sp.b.recrutamento = 1;
-    const n = p.capital ? 6 : p.city ? 3 : 2;
+    if (p.capital) { sp.b.recrutamento = 1; sp.b.quartel = 1; sp.b.forte = 2; }
+    else if (p.city) { sp.b.recrutamento = 1; sp.b.forte = 1; }
+    const n = p.capital ? 8 : p.city ? 4 : 3;
     addStack(S, M, p.owner, p.id, { infantaria: n });
   }
   // algumas províncias com cavalaria/artilharia leve na capital
-  for (const n of NATIONS) { const c = S.nations[n.id].capital; if (c >= 0) addUnitsAt(S, M, n.id, c, { cavalaria: 2 }); }
+  for (const n of NATIONS) { const c = S.nations[n.id].capital; if (c >= 0) { addUnitsAt(S, M, n.id, c, { cavalaria: 2 }); addUnitsAt(S, M, n.id, c, { artleve: 2 }); } }
   news(S, `Começa a Grande Guerra! ${NATIONS.length} nações disputam a hegemonia da Europa.`, 'geral');
   return S;
 }

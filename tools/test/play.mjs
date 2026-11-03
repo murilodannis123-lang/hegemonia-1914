@@ -105,5 +105,7 @@ console.log('tempo médio de desenho (ms):', perf);
 const sv = await p.evaluate(() => { const g = window.__game; const h = g.S.hour; document.querySelector('[data-w="config"]').click(); document.querySelector('[data-act="saveS"][data-k="1"]').click(); g.step(5); document.querySelector('[data-w="config"]')?.click(); document.querySelector('[data-act="loadS"][data-k="1"]').click(); return { h, after: g.S.hour }; });
 check('salvar e carregar', sv.h === sv.after, JSON.stringify(sv));
 await p.screenshot({ path: `${OUT}/3-final.png` });
+const imgs = await p.evaluate(() => { const v = window.__game.view; const all = [...Object.values(v.resImg), ...Object.values(v.unitImg), ...Object.values(v.artImg)]; return { total: all.length, quebradas: all.filter(i => i.complete && !i.naturalWidth).length }; });
+check('todas as imagens SVG do mapa decodificam', imgs.quebradas === 0, JSON.stringify(imgs));
 console.log('ERROS:', errors.length ? errors.join('\n') : 'nenhum');
 await b.close(); srv.close();

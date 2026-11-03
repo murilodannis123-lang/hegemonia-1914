@@ -18,10 +18,10 @@ export class MapView {
     this.allLand = new Path2D(); this.paths.forEach(p => this.allLand.addPath(p));
     this.buildEdges();
     this.glyphs = this.makeGlyphs();
-    this.resImg = {}; for (const [r, svgs] of Object.entries(RES_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgs.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" ')); this.resImg[r] = i; }
+    this.resImg = {}; for (const [r, svgs] of Object.entries(RES_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgs.replace(' xmlns="http://www.w3.org/2000/svg"', '').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" ')); this.resImg[r] = i; }
     this.noise = this.makeNoise();
     this.artImg = {};
-    this.unitImg = {}; for (const [u, s] of Object.entries(UNIT_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60" color="#f3ead6" ').replace(/currentColor/g, '#f3ead6')); this.unitImg[u] = i; }
+    this.unitImg = {}; for (const [u, s] of Object.entries(UNIT_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.replace(' xmlns="http://www.w3.org/2000/svg"', '').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60" color="#f3ead6" ').replace(/currentColor/g, '#f3ead6')); this.unitImg[u] = i; }
     this.resize();
   }
   // arestas compartilhadas entre províncias (para fronteiras de nação)
@@ -203,7 +203,7 @@ export class MapView {
       const x = nd.x, y = nd.y + 26 * sx;
       g.fillStyle = 'rgba(28,24,20,.82)'; g.fillRect(x - tw / 2 - 6 * sx, y - 8 * sx, tw + 12 * sx, 16 * sx);
       g.fillStyle = n.id === P ? '#cfe6b8' : '#efe6d2'; g.fillText(label, x, y + 0.5 * sx);
-      const fi = flagImage(n.id); if (fi.complete) { g.save(); g.beginPath(); g.arc(x, y - 22 * sx, 9 * sx, 0, Math.PI * 2); g.closePath(); g.fillStyle = '#1c1814'; g.fill(); g.clip(); g.drawImage(fi, x - 13 * sx, y - 30.5 * sx, 26 * sx, 17 * sx); g.restore(); g.strokeStyle = '#1c1814'; g.lineWidth = 2 * sx; g.beginPath(); g.arc(x, y - 22 * sx, 9 * sx, 0, Math.PI * 2); g.stroke(); }
+      const fi = flagImage(n.id); if (fi.complete && fi.naturalWidth) { g.save(); g.beginPath(); g.arc(x, y - 22 * sx, 9 * sx, 0, Math.PI * 2); g.closePath(); g.fillStyle = '#1c1814'; g.fill(); g.clip(); g.drawImage(fi, x - 13 * sx, y - 30.5 * sx, 26 * sx, 17 * sx); g.restore(); g.strokeStyle = '#1c1814'; g.lineWidth = 2 * sx; g.beginPath(); g.arc(x, y - 22 * sx, 9 * sx, 0, Math.PI * 2); g.stroke(); }
     }
     // cidades e nomes de províncias
     if (k > 0.35) {
@@ -213,7 +213,7 @@ export class MapView {
         g.fillStyle = p.city ? 'rgba(40,30,20,.85)' : 'rgba(40,30,20,.55)';
         g.beginPath(); g.arc(nd.x, nd.y, (p.city ? 3 : 2) * sx, 0, Math.PI * 2); g.fill();
         if (k > 0.55 || p.city) { g.fillStyle = 'rgba(35,28,20,.8)'; g.fillText(p.name, nd.x, nd.y - (p.city ? 42 : 40) * sx); }
-        if (k > 0.5) { const ri = this.resImg[p.res]; if (ri && ri.complete) { const z = (p.double ? 17 : 13) * sx; g.drawImage(ri, nd.x + 16 * sx, nd.y + 8 * sx, z, z); if (p.double) g.drawImage(ri, nd.x + 26 * sx, nd.y + 8 * sx, z, z); } }
+        if (k > 0.5) { const ri = this.resImg[p.res]; if (ri && ri.complete && ri.naturalWidth) { const z = (p.double ? 17 : 13) * sx; g.drawImage(ri, nd.x + 16 * sx, nd.y + 8 * sx, z, z); if (p.double) g.drawImage(ri, nd.x + 26 * sx, nd.y + 8 * sx, z, z); } }
       }
     }
     // batalhas
@@ -267,7 +267,7 @@ export class MapView {
     g.fillStyle = selected ? 'rgba(255,211,90,.55)' : 'rgba(0,0,0,.32)'; g.beginPath(); g.ellipse(0, -2 * s, (selected ? 24 : 19) * s, (selected ? 8 : 6) * s, 0, 0, Math.PI * 2); g.fill();
     // figura
     const img = this.art(icon, st.nat === 'reb' ? 'xx' : st.nat);
-    if (img.complete) g.drawImage(img, -26 * s, -35 * s, 52 * s, 32 * s);
+    if (img.complete && img.naturalWidth) g.drawImage(img, -26 * s, -35 * s, 52 * s, 32 * s);
     // placa com número
     const n = stackCount(st); const label = n > 999 ? '999+' : String(n);
     g.font = `600 ${10 * s}px Oswald, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';

@@ -50,8 +50,8 @@ function loop(t) {
   }
   if (S && !$('#menu').innerHTML) {
     view.selProv = selProv; view.sel = selStack;
-    view.draw(S, vis, speed ? acc / SPEEDS[speed] : 0);
-    if (t - lastUi > 300) { lastUi = t; renderTop(); renderPanel(); }
+    try { view.draw(S, vis, speed ? acc / SPEEDS[speed] : 0); } catch (e) { if (!loop.warned) { console.error(e); loop.warned = true; } }
+    if (t - lastUi > 300) { lastUi = t; try { renderTop(); renderPanel(); } catch (e) { console.error(e); } }
     if (win && win.live && t - lastWin > 1000) { lastWin = t; renderWin(true); }
   }
   requestAnimationFrame(loop);

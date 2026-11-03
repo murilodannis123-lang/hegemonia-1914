@@ -92,3 +92,8 @@ export function unitArtSVG(u, nat, size = '') {
   const f = DRAW[u] || DRAW.infantaria;
   return (cache[key] = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 104 64" ${size}>${f(uni, shade(uni, -0.25), nc)}</svg>`);
 }
+
+// sprites pintados (gerados para o jogo) — quando existem, substituem o desenho vetorial
+export const UNIT_PNG = new Set(['infantaria', 'cavalaria', 'choque', 'blindado', 'artleve', 'artilharia', 'tanqueleve', 'tanquepesado', 'caca', 'bombardeiro', 'zepelim', 'couracado']);
+export const unitPngUrl = u => `assets/units/${u}.png`;
+export function unitHTML(u, nat, cls = 'ic unit') { return UNIT_PNG.has(u) ? `<img class="${cls} spr" src="${unitPngUrl(u)}" alt="">` : unitArtSVG(u, nat, `class="${cls}"`); }

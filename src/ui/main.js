@@ -11,8 +11,8 @@ import { nationPower } from '../engine/ai.js';
 import { MapView } from './render.js';
 import { RES_ICON, UNIT_ICON, UI_ICON, BUILD_ICON } from './icons.js';
 import { flagSVG } from './flags.js';
-import { unitArtSVG } from './unitart.js';
-const UA = (u, nat) => unitArtSVG(u, nat || (S && S.opts.player) || 'fra', 'class="ic unit"');
+import { unitArtSVG, unitHTML } from './unitart.js';
+const UA = (u, nat) => unitHTML(u, nat || (S && S.opts.player) || 'fra');
 import { photoFor, photoUrl, ALL_PHOTOS, PHOTO_CATS, NEWS_PHOTO } from '../data/photos.js';
 
 const $ = s => document.querySelector(s);
@@ -273,7 +273,7 @@ function stackPanel(st) {
   const others = S.stacks.filter(o => o !== st && o.nat === P && stackDomain(o) === dom && (dom === 'air' ? !o.mission && !st.mission && o.base === st.base : o.node === st.node && o.prog === 0 && st.prog === 0));
   return `<div class="ph ${cls}">${flagSVG(st.nat)}<div class="t">${esc(st.name || (UNITS[top]?.name || 'Tropa') + ' · ' + (st.nat === 'reb' ? 'Rebeldes' : NATION_BY_ID[st.nat].adj))}</div>${relTag(st.nat)}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
   <div class="pb">
-    <div style="width:150px;padding:0;position:relative"><div class="vign">${top ? unitArtSVG(top, st.nat, 'class="ic"') : ''}<img src="${photoFor(UNIT_PHOTO[top] || 'infantaria', st.id)}" alt="" onerror="this.remove()"></div></div>
+    <div style="width:150px;padding:0;position:relative"><div class="vign">${top ? unitHTML(top, st.nat, 'ic') : ''}<img src="${photoFor(UNIT_PHOTO[top] || 'infantaria', st.id)}" alt="" onerror="this.remove()"></div></div>
     <div style="min-width:170px"><div class="lbl">Pontos de vida</div><div class="row"><div class="bar grow"><i style="width:${f * 100}%;background:${f > .6 ? 'var(--good)' : f > .3 ? '#e2b84a' : 'var(--bad)'}"></i></div><b class="small">${Math.round(hp.hp)}/${Math.round(hp.max)}</b></div>
       <div class="stats" style="margin-top:8px"><span>${UI_ICON.raio} <b>${atk.toFixed(0)}</b></span><span>${UI_ICON.escudo} <b>${def.toFixed(0)}</b></span><span>${UI_ICON.velocidade} <b>${stackSpeed(S, st)}</b> km/h</span>${dom === 'air' ? `<span>alcance <b>${stackRange(st)}</b> km</span>` : ''}</div>
       <div class="small" style="margin-top:6px">${esc(where)}${eta}</div></div>
@@ -330,7 +330,7 @@ $('#modal').addEventListener('click', e => {
 });
 $('#modal').addEventListener('change', e => { const a = e.target.closest('[data-chg]'); if (a && win) { const fn = ACTS[a.dataset.chg]; if (fn) { fn(a, win); renderWin(); } } });
 function res(r, v, have) { return `<span class="cost ${have != null && have < v ? 'no' : ''}">${RES_ICON[r]}${fmt(v)}</span>`; }
-function art(unitOrBuild, cat, seed) { return `<div class="vign">${UNITS[unitOrBuild] ? unitArtSVG(unitOrBuild, S.opts.player, 'class="ic"') : BUILD_ICON[unitOrBuild] || ''}<img loading="lazy" src="${photoFor(cat, seed)}" alt="" onerror="this.remove()"></div>`; }
+function art(unitOrBuild, cat, seed) { return `<div class="vign">${UNITS[unitOrBuild] ? unitHTML(unitOrBuild, S.opts.player, 'ic') : BUILD_ICON[unitOrBuild] || ''}<img loading="lazy" src="${photoFor(cat, seed)}" alt="" onerror="this.remove()"></div>`; }
 
 const WINS = {
   provincia(w) {

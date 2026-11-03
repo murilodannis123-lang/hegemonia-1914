@@ -5,7 +5,7 @@ import { stackDomain } from '../engine/state.js';
 import { rel, stackCount, stackHP, stackSpeed, stackPos } from '../engine/sim.js';
 import { stackVisible } from '../engine/vision.js';
 import { UNIT_ICON, RES_ICON } from './icons.js';
-import { unitArtSVG } from './unitart.js';
+import { unitArtSVG, UNIT_PNG, unitPngUrl } from './unitart.js';
 import { flagImage } from './flags.js';
 
 const RES_COLOR = { graos: '#d8c06a', peixe: '#7fa9bd', ferro: '#8e939b', madeira: '#8d6a43', carvao: '#4a4a4a', petroleo: '#6b3b2a', gas: '#c8645a' };
@@ -35,9 +35,13 @@ export class MapView {
     this.edges = [...map.values()].filter(e => e.p2 !== undefined);
   }
   makeNoise() {
-    const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); const d = g.createImageData(256, 256);
-    for (let i = 0; i < d.data.length; i += 4) { const v = 120 + Math.random() * 135; d.data[i] = v; d.data[i + 1] = v * 0.95; d.data[i + 2] = v * 0.85; d.data[i + 3] = 255; }
-    g.putImageData(d, 0, 0); return this.g.createPattern(c, 'repeat');
+    // textura de aquarela (ruído fractal que se repete sem emenda)
+    const N = 256, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'); const d = g.createImageData(N, N);
+    let seed = 11; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const oct = [[8, 0.5], [16, 0.25], [32, 0.15], [64, 0.1]].map(([n, w]) => ({ n, w, v: Array.from({ length: n * n }, rnd) }));
+    const val = (o, x, y) => { const fx = x / N * o.n, fy = y / N * o.n, x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0; const at = (i, j) => o.v[((j % o.n) * o.n) + (i % o.n)]; const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty); return (at(x0, y0) * (1 - sx) + at(x0 + 1, y0) * sx) * (1 - sy) + (at(x0, y0 + 1) * (1 - sx) + at(x0 + 1, y0 + 1) * sx) * sy; };
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { let v = 0; for (const o of oct) v += val(o, x, y) * o.w; v = 165 + v * 90 + (rnd() - 0.5) * 14; const i = (y * N + x) * 4; d.data[i] = v; d.data[i + 1] = v * 0.94; d.data[i + 2] = v * 0.82; d.data[i + 3] = 255; }
+    g.putImageData(d, 0, 0); const pat = this.g.createPattern(c, 'repeat'); pat.setTransform && pat.setTransform(new DOMMatrix().scale(3.5)); return pat;
   }
   resize() {
     const r = this.c.getBoundingClientRect(); this.w = r.width; this.h = r.height;
@@ -74,7 +78,7 @@ export class MapView {
     const g = this.g, M = this.M, k = this.k, P = S.opts.player;
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     // mar
-    const grad = g.createLinearGradient(0, 0, 0, this.h); grad.addColorStop(0, '#5e8a93'); grad.addColorStop(1, '#4d7781');
+    const grad = g.createLinearGradient(0, 0, 0, this.h); grad.addColorStop(0, '#5d8f9c'); grad.addColorStop(1, '#3f6f7d');
     g.fillStyle = grad; g.fillRect(0, 0, this.w, this.h);
     g.setTransform(this.dpr * k, 0, 0, this.dpr * k, this.dpr * this.ox, this.dpr * this.oy);
     const key = this.mode + '|' + P + '|' + S.provinces.map(p => this.mode === 'moral' ? Math.round(p.morale / 5) : p.owner).join(',') + '|' + (S.opts.fog ? vis.nodes.size + ':' + [...vis.nodes].reduce((a, b) => a + b * 7, 0) : '') + '|' + Object.entries(S.rel).join() + '|' + S.nations[P].coalition;
@@ -153,6 +157,10 @@ export class MapView {
     if (!this.halo) {
       const HK = 0.42, c = document.createElement('canvas'); c.width = Math.ceil(M.W * HK); c.height = Math.ceil(M.H * HK);
       const hg = c.getContext('2d'); hg.setTransform(HK, 0, 0, HK, 0, 0); hg.lineJoin = 'round';
+      // ondas no mar (traços curtos), a terra cobre depois
+      let sd = 5; const r = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+      hg.strokeStyle = 'rgba(230,245,245,.16)'; hg.lineWidth = 1.6 / HK; hg.lineCap = 'round';
+      for (let i = 0; i < 2600; i++) { const x = r() * M.W, y = r() * M.H, w = 10 + r() * 16; hg.beginPath(); hg.moveTo(x - w, y); hg.quadraticCurveTo(x, y - w * 0.35, x + w, y); hg.stroke(); }
       hg.strokeStyle = 'rgba(210,230,225,.22)'; hg.lineWidth = 9 / HK; hg.stroke(this.allLand);
       hg.strokeStyle = 'rgba(210,230,225,.18)'; hg.lineWidth = 4 / HK; hg.stroke(this.allLand);
       this.halo = c;
@@ -161,8 +169,16 @@ export class MapView {
     // províncias
     const fog = S.opts.fog && this.mode === 'padrao';
     for (const [c, path] of this.groups) { g.fillStyle = c; g.fill(path, 'evenodd'); }
-    // textura de papel
-    g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.16; g.fillStyle = this.noise; g.fill(this.allLand, 'evenodd'); g.restore();
+    // textura de aquarela
+    g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.32; g.fillStyle = this.noise; g.fill(this.allLand, 'evenodd'); g.restore();
+    // sombra interna da costa (estática)
+    if (!this.coastShade) {
+      const HK = 0.42, c = document.createElement('canvas'); c.width = Math.ceil(M.W * HK); c.height = Math.ceil(M.H * HK);
+      const cg = c.getContext('2d'); cg.setTransform(HK, 0, 0, HK, 0, 0); cg.save(); cg.clip(this.allLand, 'evenodd'); cg.lineJoin = 'round';
+      cg.strokeStyle = 'rgba(90,65,40,.16)'; cg.lineWidth = 16 / HK; cg.stroke(this.allLand); cg.strokeStyle = 'rgba(90,65,40,.18)'; cg.lineWidth = 6 / HK; cg.stroke(this.allLand); cg.restore();
+      this.coastShade = c;
+    }
+    g.drawImage(this.coastShade, 0, 0, M.W, M.H);
     // névoa
     if (fog) { g.fillStyle = 'rgba(45,40,30,.17)'; g.fill(this.fogPath, 'evenodd'); }
     // linhas de província
@@ -251,7 +267,7 @@ export class MapView {
       const [scx, scy] = this.toScreen(p.x + ox, p.y + oy); this.hits.push({ id: st.id, x: scx, y: scy });
     }
   }
-  art(u, nat) { const k = u + nat; let i = this.artImg[k]; if (!i) { i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(unitArtSVG(u, nat, 'width="208" height="128"')); this.artImg[k] = i; } return i; }
+  art(u, nat) { const k = UNIT_PNG.has(u) ? u : u + nat; let i = this.artImg[k]; if (!i) { i = new Image(); i.src = UNIT_PNG.has(u) ? unitPngUrl(u) : 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(unitArtSVG(u, nat, 'width="208" height="128"')); this.artImg[k] = i; } return i; }
   drawToken(S, st, x, y, selected) {
     const g = this.g, sx = 1 / this.k, P = S.opts.player;
     const s = sx * Math.max(0.8, Math.min(1.3, this.k * 2.2));
@@ -267,7 +283,7 @@ export class MapView {
     g.fillStyle = selected ? 'rgba(255,211,90,.55)' : 'rgba(0,0,0,.32)'; g.beginPath(); g.ellipse(0, -2 * s, (selected ? 24 : 19) * s, (selected ? 8 : 6) * s, 0, 0, Math.PI * 2); g.fill();
     // figura
     const img = this.art(icon, st.nat === 'reb' ? 'xx' : st.nat);
-    if (img.complete && img.naturalWidth) g.drawImage(img, -26 * s, -35 * s, 52 * s, 32 * s);
+    if (img.complete && img.naturalWidth) { const bw = 58 * s, bh = 46 * s, f = Math.min(bw / img.naturalWidth, bh / img.naturalHeight); const w = img.naturalWidth * f, h = img.naturalHeight * f; g.drawImage(img, -w / 2, -3 * s - h, w, h); }
     // placa com número
     const n = stackCount(st); const label = n > 999 ? '999+' : String(n);
     g.font = `600 ${10 * s}px Oswald, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';

@@ -212,6 +212,15 @@ function dailyHeal(S, M) {
 }
 
 // ---------------- produção e construção
+// inicia uma construção (paga na hora). Usado pela ordem do jogador e pela fila de construção.
+export function startBuild(S, M, pid, type) {
+  const sp = S.provinces[pid]; const n = S.nations[sp.owner];
+  const u = buildUnlocked(S, M, pid, type); if (!u.ok) return { ok: false, msg: u.why };
+  const cost = buildCost(type, u.level); if (!canAfford(n, cost)) return { ok: false, msg: 'Recursos insuficientes.' };
+  pay(n, cost); const t = buildTime(S, pid, type, u.level);
+  sp.build = { type, level: u.level, left: t, total: t, cost };
+  return { ok: true, msg: `${BUILDINGS[type].name} em construção.` };
+}
 function hourlyProduction(S, M) {
   for (let i = 0; i < S.provinces.length; i++) {
     const sp = S.provinces[i]; if (sp.owner === 'reb') continue;
@@ -221,6 +230,11 @@ function hourlyProduction(S, M) {
         sp.b[sp.build.type] = sp.build.level;
         event(S, sp.owner, `${BUILDINGS[sp.build.type].name}${BUILDINGS[sp.build.type].max > 1 ? ' nível ' + sp.build.level : ''} concluído em ${M.provinces[i].name}.`, 'construcao', i);
         sp.build = null;
+        // fila de construção: começa a próxima (paga agora); se não der, avisa e descarta
+        while (sp.bq && sp.bq.length && !sp.build) {
+          const nx = sp.bq.shift(); const r = startBuild(S, M, i, nx);
+          if (!r.ok) event(S, sp.owner, `Fila de ${M.provinces[i].name}: não deu para começar ${BUILDINGS[nx].name} (${r.msg})`, 'alerta', i);
+        }
       }
     }
     if (sp.queue.length) {
@@ -283,7 +297,7 @@ export function tryCapture(S, M, nat, node) {
   if (sp.owner === nat || !hostile(S, nat, sp.owner)) return false;
   const defenders = S.stacks.some(o => !o.dead && o.node === node && o.prog === 0 && stackDomain(o) === 'land' && (o.nat === sp.owner || rel(S, o.nat, sp.owner) === 'aliado') && hostile(S, nat, o.nat));
   if (defenders) return false;
-  const old = sp.owner; sp.owner = nat; sp.lastCapture = S.hour; sp.queue = []; sp.build = null;
+  const old = sp.owner; sp.owner = nat; sp.lastCapture = S.hour; sp.queue = []; sp.build = null; sp.bq = [];
   sp.morale = Math.min(sp.morale, sp.core === nat ? 60 : 35);
   if (sp.b.forte) sp.b.forte = Math.max(0, sp.b.forte - 1) || undefined;
   if (!sp.b.forte) delete sp.b.forte;

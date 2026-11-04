@@ -261,6 +261,7 @@ function onKey(e) {
   if (e.target.matches('input,textarea')) return;
   if (e.key === 'Escape') { if (win) closeWin(); else if (pending) clearPending(); else { selStack = null; selProv = -1; view.preview = null; } }
   if (e.key === 'Enter' && pending && !win) confirmOrder();
+  if (win && win.name === 'provincia' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); provStep(e.key === 'ArrowLeft' ? -1 : 1); }
   if (e.key === ' ' && S) { e.preventDefault(); speed = speed ? 0 : 1; renderSpeed(); }
 }
 
@@ -280,7 +281,7 @@ function provPanel(i) {
   const cls = own ? '' : hostile(S, P, sp.owner) ? 'enemy' : 'foreign';
   const garrison = S.stacks.filter(s => s.node === i && s.prog === 0 && stackDomain(s) !== 'sea' && (own || vis2));
   const blds = Object.entries(sp.b).map(([b, l]) => `<span class="chip" title="${BUILDINGS[b].name}">${BUILD_ICON[b]} ${BUILDINGS[b].max > 1 ? l : ''}</span>`).join('') || '<span class="muted small">Nenhum edifício</span>';
-  return `<div class="ph ${cls}">${flagSVG(sp.owner)}<div class="t">${esc(p.name)}</div>${relTag(sp.owner)}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
+  return `<div class="ph ${cls}">${own ? '<button class="pa" data-p="pstep" data-d="-1" title="Província anterior">‹</button>' : ''}${flagSVG(sp.owner)}<div class="t">${esc(p.name)}</div>${relTag(sp.owner)}${own ? '<button class="pa" data-p="pstep" data-d="1" title="Próxima província">›</button>' : ''}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
   <div class="pb">
     <div style="min-width:170px"><div class="lbl">Produção diária</div>
       <div class="row">${RES_ICON.dinheiro}<b>${fmt(inc.money)}</b> ${RES_ICON[p.res]}<b>${fmt(inc.res)}</b></div>
@@ -305,7 +306,7 @@ function stackPanel(st) {
   const cls = own ? '' : hostile(S, P, st.nat) ? 'enemy' : 'foreign';
   const top = Object.keys(st.units).sort((a, b) => st.units[b].hp - st.units[a].hp)[0];
   const others = S.stacks.filter(o => o !== st && o.nat === P && stackDomain(o) === dom && (dom === 'air' ? !o.mission && !st.mission && o.base === st.base : o.node === st.node && o.prog === 0 && st.prog === 0));
-  return `<div class="ph ${cls}">${flagSVG(st.nat)}<div class="t">${esc(st.name || (UNITS[top]?.name || 'Tropa') + ' · ' + (st.nat === 'reb' ? 'Rebeldes' : NATION_BY_ID[st.nat].adj))}</div>${relTag(st.nat)}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
+  return `<div class="ph ${cls}">${own ? '<button class="pa" data-p="sstep" data-d="-1" title="Tropa anterior">‹</button>' : ''}${flagSVG(st.nat)}<div class="t">${esc(st.name || (UNITS[top]?.name || 'Tropa') + ' · ' + (st.nat === 'reb' ? 'Rebeldes' : NATION_BY_ID[st.nat].adj))}</div>${relTag(st.nat)}${own ? '<button class="pa" data-p="sstep" data-d="1" title="Próxima tropa">›</button>' : ''}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
   <div class="pb">
     <div style="width:150px;padding:0;position:relative"><div class="vign">${top ? unitHTML(top, st.nat, 'ic') : ''}<img src="${photoFor(UNIT_PHOTO[top] || 'infantaria', st.id)}" alt="" onerror="this.remove()"></div></div>
     <div style="min-width:170px"><div class="lbl">Pontos de vida</div><div class="row"><div class="bar grow"><i style="width:${f * 100}%;background:${f > .6 ? 'var(--good)' : f > .3 ? '#e2b84a' : 'var(--bad)'}"></i></div><b class="small">${Math.round(hp.hp)}/${Math.round(hp.max)}</b></div>
@@ -333,6 +334,8 @@ $('#panel').addEventListener('click', e => {
   if (a === 'build') openWin('provincia', { prov: selProv, tab: 'edificios' });
   if (a === 'units') openWin('provincia', { prov: selProv, tab: 'terra' });
   if (a === 'sel') { selStack = +b.dataset.id; selProv = -1; }
+  if (a === 'pstep') { const mine = myProvs(); const k = mine.indexOf(selProv); selProv = mine[(k + +b.dataset.d + mine.length) % mine.length]; const nd = M.nodes[selProv]; view.centerOn(nd.x, nd.y, view.k); renderPanel(); return; }
+  if (a === 'sstep') { const mine = S.stacks.filter(o => o.nat === P && !o.dead).sort((x, y) => stackCount(y) - stackCount(x) || x.id - y.id); const k = mine.findIndex(o => o.id === selStack); const o = mine[(k + +b.dataset.d + mine.length) % mine.length]; clearPending(); selStack = o.id; selProv = -1; view.centerOn(o.x, o.y, view.k); renderPanel(); return; }
   if (a === 'diplo') openWin('diplomacia', { nat: b.dataset.n });
   if (a === 'capital') { const r = C.moveCapital(S, M, P, selProv); toast(r.msg, r.ok ? 'info' : 'alerta'); }
   if (!st) { renderPanel(); return; }
@@ -346,11 +349,21 @@ $('#panel').addEventListener('click', e => {
 });
 
 // ================= janelas
+// suas províncias na ordem da navegação: capital, cidades e o resto, cada grupo em ordem alfabética
+function myProvs() { const P = S.opts.player, cap = S.nations[P].capital; return S.provinces.map((sp, i) => i).filter(i => S.provinces[i].owner === P).sort((a, b) => (b === cap) - (a === cap) || (M.provinces[b].city ? 1 : 0) - (M.provinces[a].city ? 1 : 0) || M.provinces[a].name.localeCompare(M.provinces[b].name)); }
+function provStep(d, free) {
+  if (!win || win.name !== 'provincia') return; const mine = myProvs(); if (!mine.length) return;
+  let pos = mine.indexOf(win.prov); const tab = win.tab || 'edificios';
+  const busy = i => tab === 'edificios' ? !!S.provinces[i].build : S.provinces[i].queue.length > 0;
+  for (let k = 0; k < mine.length; k++) { pos = (pos + d + mine.length) % mine.length; if (!free || !busy(mine[pos])) break; }
+  if (free && busy(mine[pos])) { toast(tab === 'edificios' ? 'Todas as províncias já estão construindo.' : 'Todas as filas de produção estão ocupadas.'); return; }
+  win.prov = mine[pos]; selProv = win.prov; selStack = null; const nd = M.nodes[win.prov]; view.centerOn(nd.x, nd.y, Math.max(view.k, 0.45)); renderWin();
+}
 function openWin(name, opts = {}) { win = { name, ...opts }; $('#modal').classList.remove('hidden'); renderWin(); }
 function closeWin() { win = null; $('#modal').classList.add('hidden'); put($('#modal'), ''); }
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-x]')) closeWin(); });
-function frame({ title, tabs, tab, body, wide, cat = 'trincheira', live }) {
-  return `<div class="win ${wide ? 'wide' : ''}"><div class="wh" style="--banner:${banner(cat, title.length)}"><h2>${title}</h2><button class="x" data-x>${UI_ICON.fechar}</button>
+function frame({ title, tabs, tab, body, wide, cat = 'trincheira', live, nav }) {
+  return `<div class="win ${wide ? 'wide' : ''}"><div class="wh" style="--banner:${banner(cat, title.length)}"><h2>${title}</h2>${nav || ''}<button class="x" data-x>${UI_ICON.fechar}</button>
     ${tabs ? `<div class="tabs">${tabs.map(([k, t]) => `<button data-tab="${k}" class="${k === tab ? 'on' : ''}">${t}</button>`).join('')}</div>` : '<div style="height:6px"></div>'}</div><div class="wb">${body}</div></div>`;
 }
 function renderWin(isLive) {
@@ -372,21 +385,25 @@ function art(unitOrBuild, cat, seed) { return `<div class="vign">${UNITS[unitOrB
 
 const WINS = {
   provincia(w) {
+    const mine = myProvs(); const pos = mine.indexOf(w.prov);
+    const nav = mine.length > 1 && pos >= 0 ? `<div class="pnav"><button data-act="provNav" data-d="-1" title="Província anterior (←)">‹</button><span>${pos + 1}/${mine.length}</span><button data-act="provNav" data-d="1" title="Próxima província (→)">›</button><button class="free" data-act="provFree" title="Pula para a próxima província ${w.tab === 'edificios' || !w.tab ? 'sem construção em andamento' : 'com a fila de produção vazia'}">Próxima livre ›</button></div>` : '';
     const i = w.prov, p = M.provinces[i], sp = S.provinces[i], P = S.opts.player, n = S.nations[P]; w.live = true;
     if (!sp || sp.owner !== P) return frame({ title: p.name, body: '<div class="pad">Esta província não é mais sua.</div>' });
     const tab = w.tab || 'edificios';
     const q = sp.queue;
-    const qbar = `<div class="qbar"><div><div class="lbl">Construção atual</div>${sp.build ? `<div class="prog"><i style="width:${100 * (1 - sp.build.left / sp.build.total)}%"></i><span>${BUILDINGS[sp.build.type].name} · ${hrs(sp.build.left)}</span></div><div class="row" style="margin-top:6px"><button class="btn" data-act="cancelBuild">Cancelar</button><button class="btn" data-act="rushBuild">Acelerar · ${fmt(C.speedUpCost(sp.build))}</button></div>` : '<span class="muted small">Nada em construção</span>'}</div>
+    const qbar = `<div class="qbar"><div><div class="lbl">Construção atual</div>${sp.build ? `<div class="prog"><i style="width:${100 * (1 - sp.build.left / sp.build.total)}%"></i><span>${BUILDINGS[sp.build.type].name} · ${hrs(sp.build.left)}</span></div><div class="row" style="margin-top:6px"><button class="btn" data-act="cancelBuild">Cancelar</button><button class="btn" data-act="rushBuild">Acelerar · ${fmt(C.speedUpCost(sp.build))}</button></div>${(sp.bq || []).length ? `<div class="small" style="margin-top:6px">Na fila: ${sp.bq.map((t, k) => `<span class="chip" style="display:inline-flex" data-act="unqueue" data-i="${k}" title="Tirar da fila">${k + 1}. ${BUILDINGS[t].name} ✕</span>`).join(' ')}</div>` : ''}` : '<span class="muted small">Nada em construção</span>'}</div>
       <div><div class="lbl">Produção atual</div>${q[0] ? `<div class="prog"><i style="width:${100 * (1 - q[0].left / q[0].total)}%"></i><span>${UNITS[q[0].u].name} · ${hrs(q[0].left)}</span></div><div class="row" style="margin-top:6px"><button class="btn" data-act="rushUnit">Acelerar · ${fmt(C.speedUpCost(q[0]))}</button></div>` : '<span class="muted small">Nada sendo produzido</span>'}</div>
       <div><div class="lbl">Fila de produção (${q.length}/8) · toque para cancelar</div><div class="qdots">${Array.from({ length: 8 }, (_, k) => q[k] ? `<span class="qdot" data-act="cancelQ" data-i="${k}" title="${UNITS[q[k].u].name}">${UA(q[k].u)}</span>` : '<span class="qdot empty"></span>').join('')}</div></div></div>`;
     let rows = '';
     if (tab === 'edificios') rows = BUILD_ORDER.map(b => {
       const B = BUILDINGS[b]; const u = buildUnlocked(S, M, i, b); const cur = sp.b[b] || 0; const lvl = Math.min(cur + 1, B.max);
       const cost = buildCost(b, lvl); const can = u.ok && !sp.build && canAfford(n, cost);
+      const planned = cur + (sp.build && sp.build.type === b ? 1 : 0) + (sp.bq || []).filter(t => t === b).length;
+      const canQ = !!sp.build && u.ok && (sp.bq || []).length < C.BUILD_QUEUE_MAX && planned < B.max;
       return `<div class="item ${u.ok ? '' : 'locked'}"><div class="art">${art(b, BUILD_PHOTO[b], b.length)}</div>
         <div><div class="nm">${B.name}</div><div class="lvl">${B.max > 1 ? `Nível atual ${cur} de ${B.max}` : cur ? 'Construído' : 'Não construído'}</div><div class="small muted">${B.desc}</div>${u.max ? '' : `<div class="costs" style="margin-top:4px">${Object.entries(cost).map(([r, v]) => res(r, v, n.res[r])).join('')}</div>`}</div>
         <div class="tm">${u.max ? 'Nível máximo' : u.ok ? hrs(buildTime(S, i, b, lvl)) : `<span class="why">${u.why}</span>`}${u.ok && sp.morale < 90 ? `<div class="small muted">moral +${hrs(buildTime(S, i, b, lvl) - B.time * lvl / S.opts.prodSpeed)}</div>` : ''}</div>
-        <div class="acts"><button class="rbtn" data-act="build" data-b="${b}" ${can ? '' : 'disabled'} title="Construir">${UI_ICON.martelo}</button></div></div>`;
+        <div class="acts">${sp.build ? `<button class="btn" data-act="build" data-b="${b}" ${canQ ? '' : 'disabled'} title="Começa quando a construção atual terminar (paga na hora de começar)">+ Fila</button>` : `<button class="rbtn" data-act="build" data-b="${b}" ${can ? '' : 'disabled'} title="Construir">${UI_ICON.martelo}</button>`}</div></div>`;
     }).join('');
     else rows = UNIT_TABS[tab].map(u => {
       const D = UNITS[u]; const un = unitUnlocked(S, M, i, u); const can = un.ok && q.length < 8 && canAfford(n, D.cost);
@@ -397,7 +414,7 @@ const WINS = {
         <div class="tm">${un.ok ? hrs(t) : `<span class="why">${un.why}</span>`}</div>
         <div class="acts"><button class="rbtn" data-act="prod" data-u="${u}" ${can ? '' : 'disabled'} title="Produzir 1">${UI_ICON.capacete}</button><button class="rbtn" data-act="prod5" data-u="${u}" ${can ? '' : 'disabled'} title="Produzir 5">×5</button></div></div>`;
     }).join('');
-    return frame({ title: p.name, cat: tab === 'edificios' ? 'fabrica' : 'infantaria', tabs: [['edificios', 'Edifícios'], ['terra', 'Terra'], ['aereo', 'Aéreo'], ['naval', 'Naval']], tab, body: qbar + rows });
+    return frame({ title: p.name + (S.nations[P].capital === i ? ' ★' : ''), nav, cat: tab === 'edificios' ? 'fabrica' : 'infantaria', tabs: [['edificios', 'Edifícios'], ['terra', 'Terra'], ['aereo', 'Aéreo'], ['naval', 'Naval']], tab, body: qbar + rows });
   },
   dividir(w) {
     const st = S.stacks.find(s => s.id === w.id); if (!st) return frame({ title: 'Dividir', body: '<div class="pad">Tropa não existe mais.</div>' });
@@ -470,9 +487,19 @@ const WINS = {
       <div class="card" style="margin-top:12px"><div class="lbl">Operações ativas</div>${(n.counterUntil || 0) > S.hour ? `<div>Contraespionagem · termina em ${hrs(n.counterUntil - S.hour)}</div>` : ''}${act.length ? act.map(s => `<div>${flagSVG(s.target)} ${esc(nname(s.target))} · termina em ${hrs(s.until - S.hour)}</div>`).join('') : (n.counterUntil || 0) > S.hour ? '' : '<span class="muted small">Nenhuma</span>'}</div></div>` });
   },
   provincias(w) {
-    const P = S.opts.player; w.live = true; const list = S.provinces.map((sp, i) => [sp, i]).filter(([sp]) => sp.owner === P);
-    return frame({ title: 'Administração das províncias', cat: 'fabrica', wide: true, body: `<table class="t"><tr><th>Província</th><th>Pts</th><th>Moral</th><th>Produz/dia</th><th>Edifícios</th><th>Construção</th><th>Fila</th><th></th></tr>${list.map(([sp, i]) => { const inc = provIncome(S, M, i); const p = M.provinces[i]; return `<tr><td><b class="click" data-act="goto" data-i="${i}" style="cursor:pointer">${esc(p.name)}</b>${S.nations[P].capital === i ? ' ★' : ''}</td><td>${p.vp}</td><td><span style="color:hsl(${sp.morale * 1.1},55%,60%)">${Math.round(sp.morale)}%</span></td><td>${RES_ICON.dinheiro}${fmt(inc.money)} ${RES_ICON[p.res]}${fmt(inc.res)}</td><td>${Object.entries(sp.b).map(([b, l]) => `<span title="${BUILDINGS[b].name}">${BUILD_ICON[b]}${BUILDINGS[b].max > 1 ? l : ''}</span>`).join(' ')}</td><td class="small">${sp.build ? BUILDINGS[sp.build.type].name + ' · ' + hrs(sp.build.left) : '—'}</td><td class="small">${sp.queue.length ? sp.queue.length + ' · ' + UNITS[sp.queue[0].u].name : '—'}</td><td style="white-space:nowrap"><button class="btn" data-act="openProv" data-i="${i}" data-t="edificios">Construir</button> <button class="btn" data-act="openProv" data-i="${i}" data-t="terra">Produzir</button></td></tr>`; }).join('')}</table>` });
+    const P = S.opts.player; w.live = true; w.sel = w.sel || []; w.sort = w.sort || 'pts';
+    let list = S.provinces.map((sp, i) => [sp, i]).filter(([sp]) => sp.owner === P);
+    const key = { nome: ([, i]) => M.provinces[i].name, pts: ([, i]) => -M.provinces[i].vp, moral: ([sp]) => -sp.morale, prod: ([, i]) => -provIncome(S, M, i).money, obra: ([sp]) => sp.build ? 1 : 0, fila: ([sp]) => sp.queue.length }[w.sort];
+    list.sort((a, b) => { const x = key(a), y = key(b); return (typeof x === 'string' ? x.localeCompare(y) : x - y) || M.provinces[a[1]].name.localeCompare(M.provinces[b[1]].name); });
+    w.sel = w.sel.filter(i => S.provinces[i].owner === P);
+    const all = list.length && w.sel.length === list.length;
+    const th = (k, t) => `<th class="click" data-act="psort" data-k="${k}" title="Ordenar">${t}${w.sort === k ? ' ▾' : ''}</th>`;
+    const bar = `<div class="massbar"><b>${w.sel.length ? w.sel.length + ' marcada(s)' : 'Marque províncias para agir em todas de uma vez'}</b>
+      <span class="row"><select id="mBld">${BUILD_ORDER.map(b => `<option value="${b}" ${w.mb === b ? 'selected' : ''}>${BUILDINGS[b].name}</option>`).join('')}</select><button class="btn pri" data-act="massBuild" ${w.sel.length ? '' : 'disabled'}>Construir nas marcadas</button></span>
+      <span class="row"><select id="mUnit">${Object.values(UNIT_TABS).flat().map(u => `<option value="${u}" ${w.mu === u ? 'selected' : ''}>${UNITS[u].name}</option>`).join('')}</select><input type="number" id="mQty" value="${w.mq || 1}" min="1" max="8" style="width:56px"><button class="btn pri" data-act="massProd" ${w.sel.length ? '' : 'disabled'}>Produzir nas marcadas</button></span></div>`;
+    return frame({ title: 'Administração das províncias', cat: 'fabrica', wide: true, body: bar + `<table class="t"><tr><th><input type="checkbox" data-act="pselAll" ${all ? 'checked' : ''} title="Marcar todas"></th>${th('nome', 'Província')}${th('pts', 'Pts')}${th('moral', 'Moral')}${th('prod', 'Produz/dia')}<th>Edifícios</th>${th('obra', 'Construção')}${th('fila', 'Fila')}<th></th></tr>${list.map(([sp, i]) => { const inc = provIncome(S, M, i); const p = M.provinces[i]; return `<tr><td><input type="checkbox" data-act="psel" data-i="${i}" ${w.sel.includes(i) ? 'checked' : ''}></td><td><b class="click" data-act="goto" data-i="${i}" style="cursor:pointer">${esc(p.name)}</b>${S.nations[P].capital === i ? ' ★' : ''}</td><td>${p.vp}</td><td><span style="color:hsl(${sp.morale * 1.1},55%,60%)">${Math.round(sp.morale)}%</span></td><td>${RES_ICON.dinheiro}${fmt(inc.money)} ${RES_ICON[p.res]}${fmt(inc.res)}</td><td>${Object.entries(sp.b).map(([b, l]) => `<span title="${BUILDINGS[b].name}">${BUILD_ICON[b]}${BUILDINGS[b].max > 1 ? l : ''}</span>`).join(' ')}</td><td class="small">${sp.build ? BUILDINGS[sp.build.type].name + ' · ' + hrs(sp.build.left) + ((sp.bq || []).length ? ` (+${sp.bq.length})` : '') : '—'}</td><td class="small">${sp.queue.length ? sp.queue.length + ' · ' + UNITS[sp.queue[0].u].name : '—'}</td><td style="white-space:nowrap"><button class="btn" data-act="openProv" data-i="${i}" data-t="edificios">Construir</button> <button class="btn" data-act="openProv" data-i="${i}" data-t="terra">Produzir</button></td></tr>`; }).join('')}</table>` });
   },
+
   exercitos(w) {
     const P = S.opts.player; w.live = true; const list = S.stacks.filter(s => s.nat === P);
     return frame({ title: 'Exércitos', cat: 'infantaria', wide: true, body: `<table class="t"><tr><th>Tropa</th><th>Unidades</th><th>Vida</th><th>Local</th><th>Situação</th></tr>${list.map(s => { const hp = stackHP(s); const dom = stackDomain(s); const loc = dom === 'air' ? M.nodes[s.base].name : M.nodes[s.node].name; const sit = dom === 'air' ? (s.mission ? s.mission.type === 'patrol' ? 'Patrulha' : s.mission.type === 'strike' ? 'Ataque' : 'Retornando' : 'Na base') : s.fighting ? 'Em combate' : s.path.length ? 'Em marcha → ' + M.nodes[s.path[s.path.length - 1]].name : 'Parado';
@@ -503,7 +530,7 @@ const WINS = {
 const WIN_AFTER = { jornal: w => drawMiniMap(w) };
 
 const ACTS = {
-  build: (b, w) => { const r = C.build(S, M, S.opts.player, w.prov, b.dataset.b); if (!r.ok) toast(r.msg, 'alerta'); },
+  build: (b, w) => { const r = C.build(S, M, S.opts.player, w.prov, b.dataset.b); if (!r.ok || /fila/.test(r.msg)) toast(r.msg, r.ok ? 'info' : 'alerta'); },
   prod: (b, w) => { const r = C.produce(S, M, S.opts.player, w.prov, b.dataset.u, 1); if (!r.ok) toast(r.msg, 'alerta'); },
   prod5: (b, w) => { const r = C.produce(S, M, S.opts.player, w.prov, b.dataset.u, 5); toast(r.msg, r.ok ? 'info' : 'alerta'); },
   cancelBuild: (b, w) => toast(C.cancelBuild(S, M, S.opts.player, w.prov).msg),
@@ -534,6 +561,14 @@ const ACTS = {
   spyT: (el, w) => { w.target = el.value; },
   spy: (b, w) => { const r = C.spy(S, M, S.opts.player, w.target, b.dataset.k); toast(r.msg, r.ok ? 'info' : 'alerta'); },
   goto: (b) => { const i = +b.dataset.i; view.centerOn(M.nodes[i].x, M.nodes[i].y, Math.max(view.k, 0.5)); selProv = i; selStack = null; closeWin(); },
+  provNav: (b, w) => provStep(+b.dataset.d),
+  psort: (b, w) => { w.sort = b.dataset.k; },
+  psel: (b, w) => { const i = +b.dataset.i; w.sel = w.sel.includes(i) ? w.sel.filter(x => x !== i) : [...w.sel, i]; },
+  pselAll: (b, w) => { const mine = S.provinces.map((sp, i) => i).filter(i => S.provinces[i].owner === S.opts.player); w.sel = w.sel.length === mine.length ? [] : mine; },
+  massBuild: (b, w) => { const t = $('#mBld').value; w.mb = t; let ok = 0, q = 0, fail = 0; for (const i of w.sel) { const r = C.build(S, M, S.opts.player, i, t); if (r.ok) /fila/.test(r.msg) ? q++ : ok++; else fail++; } toast(`${BUILDINGS[t].name}: ${ok} iniciada(s)${q ? `, ${q} na fila` : ''}${fail ? `, ${fail} não deu (nível, dia ou recursos)` : ''}.`, ok + q ? 'info' : 'alerta'); },
+  massProd: (b, w) => { const u = $('#mUnit').value, n = Math.max(1, Math.min(8, +$('#mQty').value || 1)); w.mu = u; w.mq = n; let ok = 0, fail = 0; for (const i of w.sel) { const r = C.produce(S, M, S.opts.player, i, u, n); if (r.ok) ok++; else fail++; } toast(`${UNITS[u].name}: produção em ${ok} província(s)${fail ? `, ${fail} não deu (requisito, fila ou recursos)` : ''}.`, ok ? 'info' : 'alerta'); },
+  unqueue: (b, w) => toast(C.unqueueBuild(S, M, S.opts.player, w.prov, +b.dataset.i).msg),
+  provFree: (b, w) => provStep(1, true),
   openProv: (b) => { const i = +b.dataset.i; selProv = i; win = { name: 'provincia', prov: i, tab: b.dataset.t || 'edificios' }; },
   selS: (b) => { const st = S.stacks.find(s => s.id === +b.dataset.id); if (st) { selStack = st.id; selProv = -1; view.centerOn(st.x, st.y, Math.max(view.k, 0.5)); } closeWin(); },
   evGo: (b) => { const n = b.dataset.n; if (n !== '') { const i = +n; view.centerOn(M.nodes[i].x, M.nodes[i].y, Math.max(view.k, 0.5)); if (i < M.nL) { selProv = i; selStack = null; } } closeWin(); },

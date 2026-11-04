@@ -1,23 +1,26 @@
 // Ações (jogador e IA). Todas retornam { ok, msg }.
 import { UNITS, BUILDINGS, MELEE_RANGE } from './defs.js';
 import { addStack, stackDomain, news, event, rngNext } from './state.js';
-import { findPath, canAfford, pay, refund, buildCost, buildTime, unitTime, unitUnlocked, buildUnlocked, relKey, rel, hostile, nname, stackRange, stackPos, leaveCoalition, day, stackHP, stackPower, embargoed, tradeBlocked } from './sim.js';
+import { findPath, canAfford, pay, refund, buildCost, buildTime, unitTime, unitUnlocked, buildUnlocked, relKey, rel, hostile, nname, stackRange, stackPos, leaveCoalition, day, stackHP, stackPower, embargoed, tradeBlocked, startBuild } from './sim.js';
 export { embargoed, tradeBlocked };
 import { aiAnswer } from './ai.js';
 
 const ok = (msg = '') => ({ ok: true, msg });
 const no = msg => ({ ok: false, msg });
 
+export const BUILD_QUEUE_MAX = 3;
 export function build(S, M, nat, pid, type) {
   const sp = S.provinces[pid]; if (!sp || sp.owner !== nat) return no('Província não é sua.');
-  if (sp.build) return no('Já existe uma construção em andamento nesta província.');
-  const u = buildUnlocked(S, M, pid, type); if (!u.ok) return no(u.why);
-  const cost = buildCost(type, u.level); const n = S.nations[nat];
-  if (!canAfford(n, cost)) return no('Recursos insuficientes.');
-  pay(n, cost); const t = buildTime(S, pid, type, u.level);
-  sp.build = { type, level: u.level, left: t, total: t, cost };
-  return ok(`${BUILDINGS[type].name} em construção.`);
+  if (sp.build) {
+    // já constrói algo: vai para a fila (paga quando começar)
+    sp.bq = sp.bq || []; if (sp.bq.length >= BUILD_QUEUE_MAX) return no(`A fila de construção está cheia (${BUILD_QUEUE_MAX}).`);
+    const b = BUILDINGS[type]; const planned = (sp.b[type] || 0) + (sp.build.type === type ? 1 : 0) + sp.bq.filter(t => t === type).length;
+    if (planned >= b.max) return no('Esse edifício já vai chegar ao nível máximo.');
+    sp.bq.push(type); return ok(`${b.name} adicionado à fila (${sp.bq.length}/${BUILD_QUEUE_MAX}).`);
+  }
+  return startBuild(S, M, pid, type);
 }
+export function unqueueBuild(S, M, nat, pid, idx) { const sp = S.provinces[pid]; if (!sp || sp.owner !== nat || !sp.bq || !sp.bq[idx]) return no('Nada na fila.'); sp.bq.splice(idx, 1); return ok('Removido da fila.'); }
 export function cancelBuild(S, M, nat, pid) {
   const sp = S.provinces[pid]; if (!sp || sp.owner !== nat || !sp.build) return no('Nada para cancelar.');
   refund(S.nations[nat], sp.build.cost, 1); sp.build = null; return ok('Construção cancelada e recursos devolvidos.');

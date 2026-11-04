@@ -16,10 +16,11 @@ export class MapView {
     this.mode = 'padrao'; this.sel = null; this.selProv = -1; this.hover = -1; this.preview = null; this.airMode = null;
     this.paths = M.provinces.map(p => { const P = new Path2D(); for (const poly of p.poly) for (const r of poly) { P.moveTo(r[0], r[1]); for (let i = 2; i < r.length; i += 2) P.lineTo(r[i], r[i + 1]); P.closePath(); } return P; });
     this.allLand = new Path2D(); this.paths.forEach(p => this.allLand.addPath(p));
-    this.buildEdges();
+    this.buildEdges(); this.buildRoads();
     this.glyphs = this.makeGlyphs();
     this.stamp = {}; for (const k of ['montanha', 'colina', 'floresta', 'deserto', 'vila', 'cidade', 'capital']) { const i = new Image(); i.src = `assets/map/${k}.png`; i.onload = () => { this.cacheKey = null; }; this.stamp[k] = i; }
-    this.resImg = {}; for (const [r, svgs] of Object.entries(RES_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgs.replace(' xmlns="http://www.w3.org/2000/svg"', '').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" ')); this.resImg[r] = i; }
+    this.resImg = {}; for (const r of Object.keys(RES_ICON)) { const i = new Image(); i.src = `assets/res/${r}.png`; this.resImg[r] = i; }
+    this.tex = {}; for (const t of ['papel', 'mar']) { const i = new Image(); i.src = `assets/map/${t}.jpg`; i.onload = () => { this.tex[t] = this.g.createPattern(i, 'repeat'); this.halo = null; this.cacheKey = null; }; }
     this.noise = this.makeNoise();
     this.artImg = {};
     this.unitImg = {}; for (const [u, s] of Object.entries(UNIT_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.replace(' xmlns="http://www.w3.org/2000/svg"', '').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60" color="#f3ead6" ').replace(/currentColor/g, '#f3ead6')); this.unitImg[u] = i; }
@@ -34,6 +35,15 @@ export class MapView {
       const e = map.get(k); if (e) { if (e.p2 === undefined && e.p1 !== id) e.p2 = id; } else map.set(k, { p1: id, x1: r[i], y1: r[i + 1], x2: r[i + 2], y2: r[i + 3] });
     } });
     this.edges = [...map.values()].filter(e => e.p2 !== undefined);
+  }
+  // estradas = arestas terra-terra do grafo de movimento (só onde o meio do trecho é terra)
+  buildRoads() {
+    const M = this.M; this.roads = new Path2D(); this.roadEdges = [];
+    for (let a = 0; a < M.nL; a++) for (const { to: b } of M.adj[a]) {
+      if (b <= a || !M.isLand(b)) continue; const A = M.nodes[a], B = M.nodes[b];
+      if (!M.isLand(M.nodeAt((A.x + B.x) / 2, (A.y + B.y) / 2))) continue;
+      this.roadEdges.push([a, b]); this.roads.moveTo(A.x, A.y); this.roads.lineTo(B.x, B.y);
+    }
   }
   makeNoise() {
     // textura de aquarela (ruído fractal que se repete sem emenda)
@@ -82,7 +92,8 @@ export class MapView {
     const grad = g.createLinearGradient(0, 0, 0, this.h); grad.addColorStop(0, '#5d8f9c'); grad.addColorStop(1, '#3f6f7d');
     g.fillStyle = grad; g.fillRect(0, 0, this.w, this.h);
     g.setTransform(this.dpr * k, 0, 0, this.dpr * k, this.dpr * this.ox, this.dpr * this.oy);
-    const key = this.mode + '|' + P + '|' + S.provinces.map(p => this.mode === 'moral' ? Math.round(p.morale / 5) : p.owner).join(',') + '|' + (S.opts.fog ? vis.nodes.size + ':' + [...vis.nodes].reduce((a, b) => a + b * 7, 0) : '') + '|' + Object.entries(S.rel).join() + '|' + S.nations[P].coalition;
+    if (this.tex.mar) { g.fillStyle = this.tex.mar; g.fillRect(0, 0, M.W, M.H); }
+    const key = this.mode + '|' + P + '|' + S.provinces.map(p => this.mode === 'moral' ? Math.round(p.morale / 5) : p.owner).join(',') + '|' + (S.opts.fog ? vis.nodes.size + ':' + [...vis.nodes].reduce((a, b) => a + b * 7, 0) : '') + '|' + Object.entries(S.rel).join() + '|' + S.nations[P].coalition + '|' + S.provinces.reduce((a, p) => a + (p.b.ferrovia ? 1 : 0), 0);
     if (key !== this.groupKey) this.buildGroups(S, vis, key);
     if (k < 0.42) {
       // zoom afastado: usa um bitmap em cache da camada estática
@@ -161,6 +172,9 @@ export class MapView {
     }
     const nb = new Path2D(), mb = new Path2D();
     for (const e of this.edges) { const a = S.provinces[e.p1].owner, b = S.provinces[e.p2].owner; if (a !== b) { nb.moveTo(e.x1, e.y1); nb.lineTo(e.x2, e.y2); if (a === P || b === P) { mb.moveTo(e.x1, e.y1); mb.lineTo(e.x2, e.y2); } } }
+    const rails = new Path2D(); let nr = 0;
+    for (const [a, b] of this.roadEdges) if (S.provinces[a].b.ferrovia && S.provinces[b].b.ferrovia) { const A = M.nodes[a], B = M.nodes[b]; rails.moveTo(A.x, A.y); rails.lineTo(B.x, B.y); nr++; }
+    this.rails = nr ? rails : null;
     this.groups = groups; this.fogPath = fog; this.natBorder = nb; this.myBorder = mb; this.groupKey = key;
   }
   drawBase(g, k, S, vis) {
@@ -185,7 +199,7 @@ export class MapView {
     const fog = S.opts.fog && this.mode === 'padrao';
     for (const [c, path] of this.groups) { g.fillStyle = c; g.fill(path, 'evenodd'); }
     // textura de aquarela
-    g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.32; g.fillStyle = this.noise; g.fill(this.allLand, 'evenodd'); g.restore();
+    g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = this.tex.papel ? 0.85 : 0.32; g.fillStyle = this.tex.papel || this.noise; g.fill(this.allLand, 'evenodd'); g.restore();
     // sombra interna da costa (estática)
     if (!this.coastShade) {
       const HK = 0.42, c = document.createElement('canvas'); c.width = Math.ceil(M.W * HK); c.height = Math.ceil(M.H * HK);
@@ -198,6 +212,10 @@ export class MapView {
     if (fog) { g.fillStyle = 'rgba(45,40,30,.17)'; g.fill(this.fogPath, 'evenodd'); }
     // linhas de província
     g.strokeStyle = 'rgba(70,55,40,.35)'; g.lineWidth = 0.8 / k; g.stroke(this.allLand);
+    // estradas (as tropas andam por elas) e ferrovias
+    g.lineCap = 'round'; g.strokeStyle = 'rgba(115,88,55,.5)'; g.lineWidth = 2.6 / k; g.stroke(this.roads);
+    g.setLineDash([5 / k, 5 / k]); g.strokeStyle = 'rgba(250,240,215,.55)'; g.lineWidth = 0.9 / k; g.stroke(this.roads); g.setLineDash([]);
+    if (this.rails) { g.strokeStyle = 'rgba(45,35,28,.85)'; g.lineWidth = 1.5 / k; g.stroke(this.rails); g.setLineDash([1.2 / k, 4.5 / k]); g.lineCap = 'butt'; g.lineWidth = 5 / k; g.stroke(this.rails); g.setLineDash([]); }
     // desenhos de terreno
     this.drawStamps(g, k, g === this.g);
     // fronteiras de nação

@@ -12,6 +12,9 @@ export const RES_ICON = {
   gas: svg('0 0 24 24', `<rect x="7" y="6" width="10" height="15" rx="4" fill="#c8483c"/><rect x="10" y="3" width="4" height="4" fill="#8f2f27"/><rect x="9" y="11" width="6" height="4" rx="1" fill="#f1e5c8"/>`),
 };
 
+// ícones de recursos pintados (PNG); o SVG acima fica de reserva se a imagem falhar
+for (const r of Object.keys(RES_ICON)) RES_ICON[r] = `<img class="ic res" src="assets/res/${r}.png" alt="" draggable="false">`;
+
 // silhuetas das unidades (viewBox 100x60, cor = currentColor)
 const U = (body) => svg('0 0 100 60', `<g fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">${body}</g>`, 'unit');
 const wheel = (cx, cy, r) => `<circle cx="${cx}" cy="${cy}" r="${r}" stroke-width="0"/><circle cx="${cx}" cy="${cy}" r="${r * 0.42}" fill="#000" fill-opacity=".35" stroke-width="0"/>`;

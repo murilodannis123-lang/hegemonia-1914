@@ -27,6 +27,7 @@ const banner = (cat, i = 0) => `url(&quot;${photoFor(cat, i)}&quot;)`;
 
 let newsUnread = false;
 let M, S = null, view, vis = null, speed = 1, acc = 0, lastT = 0, seenEvents = 0, unread = 0;
+let pending = null; // ordem esperando confirmação: { id, node, attack, path, eta }
 let selStack = null, selProv = -1, airMode = 'patrol', win = null, lastUi = 0, lastWin = 0, previewKey = '';
 
 // ================= inicialização
@@ -200,6 +201,7 @@ function setupInput() {
 function onHover(sx, sy) {
   const [x, y] = view.toWorld(sx, sy); const n = M.nodeAt(x, y); view.hover = n < M.nL ? n : -1;
   const st = selStack && S.stacks.find(s => s.id === selStack);
+  if (pending) return;
   if (st && st.nat === S.opts.player && stackDomain(st) !== 'air' && n >= 0) {
     const key = st.id + ':' + n + ':' + st.node; if (key === previewKey) return; previewKey = key;
     let target = n; if (stackDomain(st) === 'sea' && M.isLand(n)) { const seas = M.seaNbrs[n]; target = seas.length ? seas[0] : -1; }
@@ -213,17 +215,37 @@ function onTap(sx, sy) {
   const hit = view.hitStack(sx, sy);
   const st = selStack && S.stacks.find(s => s.id === selStack);
   if (st && st.nat === S.opts.player) {
-    if (hit === st.id) { selStack = null; view.preview = null; hint(); return; }
-    if (hit) { const t = S.stacks.find(s => s.id === hit); if (t.nat !== S.opts.player && hostile(S, S.opts.player, t.nat)) { const r = C.attack(S, M, S.opts.player, st.id, t.id); toast(r.msg, r.ok ? 'info' : 'alerta'); return; }
-      // toda província tem guarnição: tocar numa tropa amiga com uma tropa selecionada é ordem de ir até lá, não trocar a seleção
-      if (stackDomain(st) === 'air') return orderAt(sx, sy);
-      if (stackDomain(t) !== 'air' && !t.path.length && t.prog === 0) { const r = C.move(S, M, S.opts.player, st.id, t.node); if (!r.ok) toast(r.msg, 'alerta'); view.preview = null; previewKey = ''; return; }
-      return orderAt(sx, sy); }
-    return orderAt(sx, sy);
+    if (hit === st.id) { selStack = null; clearPending(); hint(); return; }
+    if (stackDomain(st) === 'air') return orderAt(sx, sy);
+    // tropa terrestre/naval: o toque marca o destino e mostra a rota; a ordem só sai ao confirmar
+    // (botão Confirmar no painel ou tocar de novo no mesmo destino)
+    const t = hit && S.stacks.find(s => s.id === hit);
+    const attack = !!(t && t.nat !== S.opts.player && hostile(S, S.opts.player, t.nat));
+    let node; if (t && stackDomain(t) !== 'air' && !t.path.length && t.prog === 0) node = t.node; else { const [x, y] = view.toWorld(sx, sy); node = M.nodeAt(x, y); }
+    if (node < 0) return;
+    if (pending && pending.id === st.id && pending.node === node) return confirmOrder();
+    return planOrder(st, node, attack ? t.id : null);
   }
+  clearPending();
   if (hit) { selStack = hit; selProv = -1; return; }
   const [x, y] = view.toWorld(sx, sy); const n = M.nodeAt(x, y);
   selStack = null; selProv = n >= 0 && n < M.nL ? n : -1; view.preview = null;
+}
+function clearPending() { pending = null; view.preview = null; previewKey = ''; }
+function planOrder(st, node, attackId) {
+  let target = node; if (stackDomain(st) === 'sea' && M.isLand(node)) { const seas = M.seaNbrs[node]; if (!seas.length) { toast('Navios não chegam aí.', 'alerta'); return; } target = seas.reduce((a, b) => M.dist(st.node, a) < M.dist(st.node, b) ? a : b); }
+  const from = st.prog > 0 && st.path.length ? { ...st, node: st.path[0], prog: 0, path: [] } : st;
+  const p = findPath(S, M, from, target);
+  if (!p || (!p.length && from === st)) { if (target === st.node) { toast('A tropa já está aí.'); return; } toast('Não há caminho até lá.', 'alerta'); return; }
+  const pos = stackPos(M, st); const pts = [[pos.x, pos.y], ...(from !== st ? [[M.nodes[from.node].x, M.nodes[from.node].y]] : []), ...p.map(i => [M.nodes[i].x, M.nodes[i].y])];
+  let km = 0; for (let i = 1; i < pts.length; i++) km += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  pending = { id: st.id, node, attack: attackId, eta: km / Math.max(1, stackSpeed(S, st)) };
+  view.preview = pts; previewKey = 'pending';
+}
+function confirmOrder() {
+  if (!pending) return; const P = S.opts.player, o = pending; clearPending();
+  const r = o.attack ? C.attack(S, M, P, o.id, o.attack) : C.move(S, M, P, o.id, o.node);
+  toast(r.msg, r.ok ? 'info' : 'alerta');
 }
 function orderAt(sx, sy) {
   const st = S.stacks.find(s => s.id === selStack); if (!st) return;
@@ -237,7 +259,8 @@ function orderAt(sx, sy) {
 }
 function onKey(e) {
   if (e.target.matches('input,textarea')) return;
-  if (e.key === 'Escape') { if (win) closeWin(); else { selStack = null; selProv = -1; view.preview = null; } }
+  if (e.key === 'Escape') { if (win) closeWin(); else if (pending) clearPending(); else { selStack = null; selProv = -1; view.preview = null; } }
+  if (e.key === 'Enter' && pending && !win) confirmOrder();
   if (e.key === ' ' && S) { e.preventDefault(); speed = speed ? 0 : 1; renderSpeed(); }
 }
 
@@ -289,7 +312,8 @@ function stackPanel(st) {
       <div class="stats" style="margin-top:8px"><span>${UI_ICON.raio} <b>${atk.toFixed(0)}</b></span><span>${UI_ICON.escudo} <b>${def.toFixed(0)}</b></span><span>${UI_ICON.velocidade} <b>${stackSpeed(S, st)}</b> km/h</span>${dom === 'air' ? `<span>alcance <b>${stackRange(st)}</b> km</span>` : ''}</div>
       <div class="small" style="margin-top:6px">${esc(where)}${eta}</div></div>
     <div class="grow"><div class="lbl">Unidades</div><div class="chips">${Object.entries(st.units).map(([u, e]) => `<span class="uchip" title="${UNITS[u].name}">${UA(u, st.nat)}<b>${e.n}×</b><small>${UNITS[u].name}</small></span>`).join('')}</div>
-      ${own && dom !== 'air' ? `<div class="small muted" style="margin-top:8px"><b>Mover:</b> toque no destino · <b>Atacar:</b> toque no inimigo · <b>Soltar:</b> toque de novo nesta tropa</div>` : ''}
+      ${own && pending && pending.id === st.id ? `<div class="gobar"><span>${pending.attack ? 'Atacar em' : 'Ir para'} <b>${esc(M.nodes[pending.node].name)}</b> · chega em ~${hrs(pending.eta)}</span><button class="btn pri" data-p="go">Confirmar</button><button class="btn" data-p="nogo">Cancelar</button></div>` : ''}
+      ${own && dom !== 'air' && !(pending && pending.id === st.id) ? `<div class="small muted" style="margin-top:8px"><b>Mover/atacar:</b> toque no destino e confirme · <b>Soltar:</b> toque de novo nesta tropa</div>` : ''}
       ${own && dom === 'air' ? `<div class="small muted" style="margin-top:8px">Escolha a missão e toque no mapa (dentro do círculo de alcance)</div>` : ''}</div>
     ${own ? `<div class="acts2">
       ${dom === 'air' ? `<button class="abtn ${airMode === 'patrol' ? 'on' : ''}" data-p="air" data-m="patrol" title="Patrulhar uma área">${UI_ICON.patrulha}Patrulhar</button><button class="abtn ${airMode === 'strike' ? 'on' : ''}" data-p="air" data-m="strike" title="Atacar um alvo">${UI_ICON.alvo}Atacar</button><button class="abtn ${airMode === 'rebase' ? 'on' : ''}" data-p="air" data-m="rebase" title="Mudar para outro aeródromo">${UI_ICON.base}Nova base</button>` : ''}
@@ -303,7 +327,9 @@ function stackPanel(st) {
 $('#panel').addEventListener('click', e => {
   const b = e.target.closest('[data-p]'); if (!b) return; const a = b.dataset.p, P = S.opts.player;
   const st = selStack && S.stacks.find(s => s.id === selStack);
-  if (a === 'close') { selStack = null; selProv = -1; view.preview = null; }
+  if (a === 'close') { selStack = null; selProv = -1; clearPending(); }
+  if (a === 'go') { confirmOrder(); renderPanel(); return; }
+  if (a === 'nogo') { clearPending(); renderPanel(); return; }
   if (a === 'build') openWin('provincia', { prov: selProv, tab: 'edificios' });
   if (a === 'units') openWin('provincia', { prov: selProv, tab: 'terra' });
   if (a === 'sel') { selStack = +b.dataset.id; selProv = -1; }

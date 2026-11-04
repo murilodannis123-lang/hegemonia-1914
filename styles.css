@@ -292,3 +292,6 @@ img.ic.res { object-fit: contain; }
 .abtn:disabled { opacity: .35; cursor: default; }
 .abtn.on { background: #c98a3c; border-color: #e7b46c; color: #1c1814; }
 @media (max-width:760px), (max-height:500px) { .acts2 { grid-template-columns: repeat(5, 1fr); width: 100%; } .uchip { min-width: 58px; } .uchip img.ic.unit.spr, .uchip svg.ic { width: 48px; height: 32px; } }
+
+.gobar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding: 6px 8px; background: rgba(208,138,60,.18); border: 1px solid #c98a3c; border-radius: 6px; font-size: 13px; }
+.gobar span { flex: 1; min-width: 150px; }

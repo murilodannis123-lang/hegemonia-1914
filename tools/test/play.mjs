@@ -19,6 +19,10 @@ const selOk = await p.evaluate(() => !!document.querySelector('#panel .abtn[data
 check('selecionar tropa com clique', selOk);
 const dest = await p.evaluate(() => { const g = window.__game, S = g.S, M = g.M, P = S.opts.player; const cap = S.nations[P].capital; const n = M.adj[cap].find(e => M.isLand(e.to) && S.provinces[e.to].owner === P).to; const [x, y] = g.view.toScreen(M.nodes[n].x, M.nodes[n].y); return { x, y, n }; });
 await p.mouse.click(dest.x, dest.y + 20);
+await p.waitForTimeout(400);
+const waits = await p.evaluate(id => { const st = window.__game.S.stacks.find(s => s.id === id); return st.path.length === 0 && !!document.querySelector('#panel [data-p="go"]'); }, scr.id);
+check('destino espera confirmação', waits);
+await p.click('#panel [data-p="go"]');
 await p.waitForTimeout(200);
 const moving = await p.evaluate(id => { const st = window.__game.S.stacks.find(s => s.id === id); return st && st.path.length > 0; }, scr.id);
 check('mover com clique no mapa', moving);
@@ -44,10 +48,10 @@ const air = await p.evaluate(async () => {
   const st = S.stacks.find(s => s.nat === P && Object.keys(s.units).includes('bombardeiro'));
   if (!st) return { prod: r.ok, made: false };
   const enemy = S.stacks.find(s => s.nat === 'esp'); const m = C.airMission(S, M, P, st.id, 'strike', enemy.x, enemy.y);
-  const hp0 = enemy ? Object.values(enemy.units).reduce((a, e) => a + e.hp, 0) : 0;
-  g.step(10);
-  const hp1 = S.stacks.includes(enemy) ? Object.values(enemy.units).reduce((a, e) => a + e.hp, 0) : 0;
-  return { prod: r.ok, made: true, mission: m.ok, msg: m.msg, dmg: hp0 - hp1, back: !st.mission };
+  // soma só as quedas de vida hora a hora (cura e reforços do inimigo não mascaram o dano)
+  const hpOf = () => S.stacks.includes(enemy) ? Object.values(enemy.units).reduce((a, e) => a + e.hp, 0) : 0;
+  let dmg = 0, last = hpOf(); for (let i = 0; i < 10; i++) { g.step(1); const h = hpOf(); if (h < last) dmg += last - h; last = h; }
+  return { prod: r.ok, made: true, mission: m.ok, msg: m.msg, dmg, back: !st.mission };
 });
 check('produzir bombardeiro', air.made); check('missão de ataque aéreo', air.mission && air.dmg > 0, JSON.stringify(air));
 // 4) navios e desembarque

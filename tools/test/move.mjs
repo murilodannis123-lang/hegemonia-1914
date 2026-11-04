@@ -1,4 +1,4 @@
-// Regressão: com tropa selecionada, tocar na guarnição amiga de outra província deve mandar a tropa até lá (perto, longe e no celular).
+// Regressão: com tropa selecionada, o 1º toque no destino (mesmo em cima da guarnição amiga) só marca a rota; o 2º toque confirma. Perto, longe e no celular.
 import { createRequire } from 'module'; const { chromium } = createRequire(import.meta.url)('playwright');
 import { serve } from './serve.mjs';
 const srv = await serve(); const url = `http://localhost:${srv.address().port}/`;
@@ -16,8 +16,10 @@ for (const [nm, vp, mob, K] of [['desk', { width: 1400, height: 820 }, false, 0.
   const selected = await p.evaluate(() => document.querySelector('#panel .ph .t')?.textContent);
   // destino: um pouco ao lado do nó para não clicar na tropa de lá
   await tap(info.b[0], info.b[1] - 12); await p.waitForTimeout(400);
+  const before = await p.evaluate((id) => window.__game.S.stacks.find(s => s.id === id).path.length, info.st);
+  await tap(info.b[0], info.b[1] - 12); await p.waitForTimeout(400); // segundo toque no mesmo destino confirma
   const r = await p.evaluate((id) => { const st = window.__game.S.stacks.find(s => s.id === id); return { path: st.path, node: st.node, toasts: [...document.querySelectorAll('#toasts > *')].map(t => t.textContent).slice(-3) }; }, info.st);
-  const ok = r.path.length > 0 && !errs.some(e => !/Failed to load resource/.test(e)); if (!ok) fail = true;
+  const ok = before === 0 && r.path.length > 0 && !errs.some(e => !/Failed to load resource/.test(e)); if (!ok) fail = true;
   console.log(ok ? 'OK  ' : 'FALHA', nm, JSON.stringify({ k: info.k, selected, path: r.path }));
 }
 await b.close(); srv.close(); if (fail) process.exit(1);

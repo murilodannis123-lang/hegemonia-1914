@@ -15,7 +15,7 @@ await p.waitForTimeout(300);
 const pos = await p.evaluate(id => { const v = window.__game.view; const h = v.hits.find(h => h.id === id); return h; }, scr.id);
 await p.mouse.click(pos.x, pos.y - 12);
 await p.waitForTimeout(400);
-const selOk = await p.evaluate(() => !!document.querySelector('#panel .rbtn[data-p="split"]'));
+const selOk = await p.evaluate(() => !!document.querySelector('#panel .abtn[data-p="split"]'));
 check('selecionar tropa com clique', selOk);
 const dest = await p.evaluate(() => { const g = window.__game, S = g.S, M = g.M, P = S.opts.player; const cap = S.nations[P].capital; const n = M.adj[cap].find(e => M.isLand(e.to) && S.provinces[e.to].owner === P).to; const [x, y] = g.view.toScreen(M.nodes[n].x, M.nodes[n].y); return { x, y, n }; });
 await p.mouse.click(dest.x, dest.y + 20);

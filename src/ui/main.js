@@ -138,20 +138,22 @@ function setupMenu() {
 }
 
 // ================= barra superior, lateral, velocidade
+// só reescreve o HTML quando mudou: evita botões sumindo debaixo do dedo, imagens recarregando e lag nos cliques
+function put(el, html) { if (el._h !== html) { el._h = html; el.innerHTML = html; return true; } return false; }
 function renderTop() {
   if (!S) return; const P = S.opts.player, n = S.nations[P]; const inc = nationIncome(S, M, P);
   const sc = scores(S, M); const rank = Object.entries(sc).filter(([k]) => k !== 'reb').sort((a, b) => b[1] - a[1]).findIndex(([k]) => k === P) + 1;
   const h = S.hour % 24, d = day(S);
-  $('#top').innerHTML = `<div class="me" data-w="diplomacia">${flagSVG(P, 'flag round')}<div class="who"><div class="nm">${esc(NATION_BY_ID[P].name)}</div><div class="sub">${n.alive ? 'Seu governo' : 'Derrotado'}</div></div></div>
+  put($('#top'), `<div class="me" data-w="diplomacia">${flagSVG(P, 'flag round')}<div class="who"><div class="nm">${esc(NATION_BY_ID[P].name)}</div><div class="sub">${n.alive ? 'Seu governo' : 'Derrotado'}</div></div></div>
   <div class="rank">${rank}º<b>${sc[P] || 0}</b></div>
   <div id="res">${RES.map(r => { const net = (inc.prod[r] - inc.cons[r]) / 24; return `<div class="rs" data-w="recursos" title="${RES_INFO[r].name}">${RES_ICON[r]}<div><div class="v">${fmt(n.res[r])}</div><div class="d ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${fmt(net)}/h</div></div></div>`; }).join('')}</div>
   <div class="clock">Dia <b>${d}</b><br>${String(h).padStart(2, '0')}:00</div>
-  <button class="tbtn" data-w="config" title="Menu">${UI_ICON.menu}</button>`;
+  <button class="tbtn" data-w="config" title="Menu">${UI_ICON.menu}</button>`);
 }
 const SIDE = [['jornal', 'Jornal'], ['diplomacia', 'Diplomacia'], ['recursos', 'Recursos'], ['bolsa', 'Bolsa de valores'], ['coligacoes', 'Coligações'], ['espionagem', 'Espionagem'], ['provincias', 'Províncias'], ['exercitos', 'Exércitos'], ['eventos', 'Avisos']];
 function renderSide() {
   const props = S ? S.proposals.filter(p => p.to === S.opts.player).length : 0;
-  $('#side').innerHTML = SIDE.map(([k, t]) => `<button data-w="${k}">${UI_ICON[k === 'eventos' ? 'alerta' : k]}<span class="tip">${t}</span>${k === 'jornal' && newsUnread ? '<span class="badge">!</span>' : ''}${k === 'eventos' && unread ? `<span class="badge">${unread > 99 ? '99+' : unread}</span>` : ''}${k === 'diplomacia' && props ? `<span class="badge">${props}</span>` : ''}</button>`).join('');
+  put($('#side'), SIDE.map(([k, t]) => `<button data-w="${k}">${UI_ICON[k === 'eventos' ? 'alerta' : k]}<span class="tip">${t}</span>${k === 'jornal' && newsUnread ? '<span class="badge">!</span>' : ''}${k === 'eventos' && unread ? `<span class="badge">${unread > 99 ? '99+' : unread}</span>` : ''}${k === 'diplomacia' && props ? `<span class="badge">${props}</span>` : ''}</button>`).join(''));
 }
 function renderSpeed() {
   const modes = { padrao: 'Mapa', politico: 'Político', recursos: 'Recursos', moral: 'Moral' };
@@ -235,9 +237,9 @@ function renderPanel() {
   const el = $('#panel');
   if (!S) { el.classList.add('hidden'); return; }
   const st = selStack && S.stacks.find(s => s.id === selStack);
-  if (st) { el.classList.remove('hidden'); el.innerHTML = stackPanel(st); return; }
-  if (selProv >= 0) { el.classList.remove('hidden'); el.innerHTML = provPanel(selProv); return; }
-  el.classList.add('hidden'); el.innerHTML = '';
+  if (st) { el.classList.remove('hidden'); put(el, stackPanel(st)); return; }
+  if (selProv >= 0) { el.classList.remove('hidden'); put(el, provPanel(selProv)); return; }
+  el.classList.add('hidden'); put(el, '');
 }
 function relTag(o) { const P = S.opts.player; const r = o === P ? 'self' : rel(S, P, o); const t = { self: 'Você', guerra: 'Guerra', paz: 'Paz', aliado: 'Aliado', passagem: 'Passagem' }[r]; return `<span class="tag ${r}">${t}</span>`; }
 function provPanel(i) {
@@ -277,16 +279,16 @@ function stackPanel(st) {
     <div style="min-width:170px"><div class="lbl">Pontos de vida</div><div class="row"><div class="bar grow"><i style="width:${f * 100}%;background:${f > .6 ? 'var(--good)' : f > .3 ? '#e2b84a' : 'var(--bad)'}"></i></div><b class="small">${Math.round(hp.hp)}/${Math.round(hp.max)}</b></div>
       <div class="stats" style="margin-top:8px"><span>${UI_ICON.raio} <b>${atk.toFixed(0)}</b></span><span>${UI_ICON.escudo} <b>${def.toFixed(0)}</b></span><span>${UI_ICON.velocidade} <b>${stackSpeed(S, st)}</b> km/h</span>${dom === 'air' ? `<span>alcance <b>${stackRange(st)}</b> km</span>` : ''}</div>
       <div class="small" style="margin-top:6px">${esc(where)}${eta}</div></div>
-    <div class="grow"><div class="lbl">Unidades</div><div class="chips">${Object.entries(st.units).map(([u, e]) => `<span class="chip" title="${UNITS[u].name}">${UA(u, st.nat)} ${e.n}</span>`).join('')}</div>
-      ${own && dom !== 'air' ? `<div class="small muted" style="margin-top:8px">Toque no mapa para mover · toque numa tropa inimiga para atacar</div>` : ''}
+    <div class="grow"><div class="lbl">Unidades</div><div class="chips">${Object.entries(st.units).map(([u, e]) => `<span class="uchip" title="${UNITS[u].name}">${UA(u, st.nat)}<b>${e.n}×</b><small>${UNITS[u].name}</small></span>`).join('')}</div>
+      ${own && dom !== 'air' ? `<div class="small muted" style="margin-top:8px"><b>Mover:</b> toque no destino no mapa · <b>Atacar:</b> toque numa tropa inimiga</div>` : ''}
       ${own && dom === 'air' ? `<div class="small muted" style="margin-top:8px">Escolha a missão e toque no mapa (dentro do círculo de alcance)</div>` : ''}</div>
-    ${own ? `<div class="row" style="gap:8px;flex-wrap:wrap;max-width:260px">
-      ${dom === 'air' ? `<button class="rbtn" data-p="air" data-m="patrol" title="Patrulhar" style="${airMode === 'patrol' ? 'background:var(--accent)' : ''}">${UI_ICON.patrulha}</button><button class="rbtn" data-p="air" data-m="strike" title="Atacar" style="${airMode === 'strike' ? 'background:var(--accent)' : ''}">${UI_ICON.alvo}</button><button class="rbtn" data-p="air" data-m="rebase" title="Trocar de base" style="${airMode === 'rebase' ? 'background:var(--accent)' : ''}">${UI_ICON.base}</button>` : ''}
-      <button class="rbtn" data-p="stop" title="${dom === 'air' ? 'Voltar à base' : 'Parar'}">${UI_ICON.parar}</button>
-      <button class="rbtn" data-p="split" title="Dividir" ${stackCount(st) < 2 ? 'disabled' : ''}>${UI_ICON.dividir}</button>
-      <button class="rbtn" data-p="merge" title="Juntar com tropas no mesmo lugar" ${others.length ? '' : 'disabled'}>${UI_ICON.juntar}</button>
-      ${dom !== 'air' ? `<button class="rbtn" data-p="stance" title="${st.stance === 'passivo' ? 'Fogo à vontade desligado' : 'Fogo à vontade (artilharia/navios disparam sozinhos)'}" style="${st.stance === 'passivo' ? 'opacity:.5' : ''}">${UI_ICON.mira}</button>` : ''}
-      <button class="rbtn" data-p="rename" title="Renomear">✎</button></div>` : `<div class="row"><button class="btn" data-p="diplo" data-n="${st.nat}">Diplomacia</button></div>`}
+    ${own ? `<div class="acts2">
+      ${dom === 'air' ? `<button class="abtn ${airMode === 'patrol' ? 'on' : ''}" data-p="air" data-m="patrol" title="Patrulhar uma área">${UI_ICON.patrulha}Patrulhar</button><button class="abtn ${airMode === 'strike' ? 'on' : ''}" data-p="air" data-m="strike" title="Atacar um alvo">${UI_ICON.alvo}Atacar</button><button class="abtn ${airMode === 'rebase' ? 'on' : ''}" data-p="air" data-m="rebase" title="Mudar para outro aeródromo">${UI_ICON.base}Nova base</button>` : ''}
+      <button class="abtn" data-p="stop" title="${dom === 'air' ? 'Voltar à base' : 'Parar onde está'}">${UI_ICON.parar}${dom === 'air' ? 'Voltar' : 'Parar'}</button>
+      <button class="abtn" data-p="split" title="Separar parte das unidades" ${stackCount(st) < 2 ? 'disabled' : ''}>${UI_ICON.dividir}Dividir</button>
+      <button class="abtn" data-p="merge" title="Juntar com tropas no mesmo lugar" ${others.length ? '' : 'disabled'}>${UI_ICON.juntar}Juntar</button>
+      ${dom !== 'air' ? `<button class="abtn ${st.stance === 'passivo' ? '' : 'on'}" data-p="stance" title="Artilharia e navios disparam sozinhos em inimigos ao alcance">${UI_ICON.mira}Fogo ${st.stance === 'passivo' ? 'desl.' : 'livre'}</button>` : ''}
+      <button class="abtn" data-p="rename" title="Dar um nome a esta tropa"><span class="ic" style="font-size:20px;line-height:1">✎</span>Nome</button></div>` : `<div class="row"><button class="btn" data-p="diplo" data-n="${st.nat}">Diplomacia</button></div>`}
   </div>`;
 }
 $('#panel').addEventListener('click', e => {
@@ -309,7 +311,7 @@ $('#panel').addEventListener('click', e => {
 
 // ================= janelas
 function openWin(name, opts = {}) { win = { name, ...opts }; $('#modal').classList.remove('hidden'); renderWin(); }
-function closeWin() { win = null; $('#modal').classList.add('hidden'); $('#modal').innerHTML = ''; }
+function closeWin() { win = null; $('#modal').classList.add('hidden'); put($('#modal'), ''); }
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-x]')) closeWin(); });
 function frame({ title, tabs, tab, body, wide, cat = 'trincheira', live }) {
   return `<div class="win ${wide ? 'wide' : ''}"><div class="wh" style="--banner:${banner(cat, title.length)}"><h2>${title}</h2><button class="x" data-x>${UI_ICON.fechar}</button>
@@ -319,7 +321,7 @@ function renderWin(isLive) {
   if (!win) return; const m = $('#modal'); const wb = m.querySelector('.wb'); const scroll = wb ? wb.scrollTop : 0;
   if (isLive && m.querySelector('input:focus,textarea:focus,select:focus')) return;
   const f = WINS[win.name]; if (!f) return closeWin();
-  m.innerHTML = f(win);
+  if (!put(m, f(win)) && isLive) return;
   const wb2 = m.querySelector('.wb'); if (wb2) wb2.scrollTop = scroll;
   const after = WIN_AFTER[win.name]; if (after) after(win);
 }
@@ -581,7 +583,7 @@ function drawMiniMap(w) {
 function showEnd() {
   speed = 0; renderSpeed();
   const wv = S.winner; win = { name: '_end' }; $('#modal').classList.remove('hidden');
-  $('#modal').innerHTML = `<div class="win"><div class="wh" style="--banner:${banner(wv.type === 'vitoria' ? 'desfile' : 'ruinas', 1)};min-height:180px"><h2 style="margin-top:110px;font-size:34px">${wv.type === 'vitoria' ? 'Vitória!' : 'Derrota'}</h2></div><div class="pad"><p style="font-size:17px">${esc(wv.text)}</p><p class="muted">A guerra durou ${day(S)} dias.</p><div class="row"><button class="btn" data-act2="keep">Continuar olhando o mapa</button><button class="btn pri" data-act2="menu">Menu principal</button></div></div></div>`;
+  put($('#modal'), `<div class="win"><div class="wh" style="--banner:${banner(wv.type === 'vitoria' ? 'desfile' : 'ruinas', 1)};min-height:180px"><h2 style="margin-top:110px;font-size:34px">${wv.type === 'vitoria' ? 'Vitória!' : 'Derrota'}</h2></div><div class="pad"><p style="font-size:17px">${esc(wv.text)}</p><p class="muted">A guerra durou ${day(S)} dias.</p><div class="row"><button class="btn" data-act2="keep">Continuar olhando o mapa</button><button class="btn pri" data-act2="menu">Menu principal</button></div></div></div>`);
   $('#modal').onclick = e => { const a = e.target.closest('[data-act2]')?.dataset.act2; if (a === 'keep') { win = null; $('#modal').classList.add('hidden'); $('#modal').onclick = null; } if (a === 'menu') { $('#modal').onclick = null; closeWin(); mainMenu(); } };
 }
 

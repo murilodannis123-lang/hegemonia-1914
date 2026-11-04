@@ -9,6 +9,8 @@ import { unitArtSVG, UNIT_PNG, unitPngUrl } from './unitart.js';
 import { flagImage } from './flags.js';
 
 const RES_COLOR = { graos: '#d8c06a', peixe: '#7fa9bd', ferro: '#8e939b', madeira: '#8d6a43', carvao: '#4a4a4a', petroleo: '#6b3b2a', gas: '#c8645a' };
+// mistura duas cores #rrggbb (t = peso da segunda)
+const mix = (a, b, t) => '#' + [1, 3, 5].map(j => Math.round(parseInt(a.substr(j, 2), 16) * (1 - t) + parseInt(b.substr(j, 2), 16) * t).toString(16).padStart(2, '0')).join('');
 export class MapView {
   constructor(canvas, M) {
     this.c = canvas; this.g = canvas.getContext('2d'); this.M = M;
@@ -81,6 +83,8 @@ export class MapView {
     if (o === 'reb') return '#7a6d60';
     const r = rel(S, P, o);
     if (r === 'guerra') return '#c98e82';
+    // zoom afastado: cada nação com a sua cor (suavizada), como num mapa político
+    if (this.far) return mix(NATION_BY_ID[o].color, '#e6dcc4', 0.45);
     if (r === 'aliado') return '#a9bfd2';
     if (r === 'passagem') return '#c6c7a6';
     return '#cbc1a6';
@@ -93,7 +97,8 @@ export class MapView {
     const grad = g.createLinearGradient(0, 0, 0, this.h); grad.addColorStop(0, '#5d8f9c'); grad.addColorStop(1, '#3f6f7d');
     g.fillStyle = grad; g.fillRect(0, 0, this.w, this.h);
     g.setTransform(this.dpr * k, 0, 0, this.dpr * k, this.dpr * this.ox, this.dpr * this.oy);
-    const key = this.mode + '|' + P + '|' + S.provinces.map(p => this.mode === 'moral' ? Math.round(p.morale / 5) : p.owner).join(',') + '|' + (S.opts.fog ? vis.nodes.size + ':' + [...vis.nodes].reduce((a, b) => a + b * 7, 0) : '') + '|' + Object.entries(S.rel).join() + '|' + S.nations[P].coalition + '|' + S.provinces.reduce((a, p) => a + (p.b.ferrovia ? 1 : 0), 0);
+    this.far = k < 0.3;
+    const key = (this.far ? 'F' : 'N') + this.mode + '|' + P + '|' + S.provinces.map(p => this.mode === 'moral' ? Math.round(p.morale / 5) : p.owner).join(',') + '|' + (S.opts.fog ? vis.nodes.size + ':' + [...vis.nodes].reduce((a, b) => a + b * 7, 0) : '') + '|' + Object.entries(S.rel).join() + '|' + S.nations[P].coalition + '|' + S.provinces.reduce((a, p) => a + (p.b.ferrovia ? 1 : 0), 0);
     if (key !== this.groupKey) this.buildGroups(S, vis, key);
     if (k < 0.42) {
       // zoom afastado: usa um bitmap em cache da camada estática
@@ -231,12 +236,12 @@ export class MapView {
     // névoa
     if (fog) { g.fillStyle = 'rgba(45,40,30,.17)'; g.fill(this.fogPath, 'evenodd'); }
     // linhas de província
-    g.strokeStyle = 'rgba(70,55,40,.35)'; g.lineWidth = 0.8 / k; g.stroke(this.allLand);
+    g.strokeStyle = this.far ? 'rgba(70,55,40,.16)' : 'rgba(70,55,40,.35)'; g.lineWidth = 0.8 / k; g.stroke(this.allLand);
     // estradas (as tropas andam por elas) e ferrovias
-    g.lineCap = 'round'; g.strokeStyle = 'rgba(115,88,55,.5)'; g.lineWidth = 2.6 / k; g.stroke(this.roads);
-    if (this.rails) { g.strokeStyle = 'rgba(45,35,28,.85)'; g.lineWidth = 1.5 / k; g.stroke(this.rails); g.setLineDash([1.2 / k, 4.5 / k]); g.lineCap = 'butt'; g.lineWidth = 5 / k; g.stroke(this.rails); g.setLineDash([]); }
+    if (!this.far) { g.lineCap = 'round'; g.strokeStyle = 'rgba(115,88,55,.5)'; g.lineWidth = 2.6 / k; g.stroke(this.roads); }
+    if (this.rails && !this.far) { g.strokeStyle = 'rgba(45,35,28,.85)'; g.lineWidth = 1.5 / k; g.stroke(this.rails); g.setLineDash([1.2 / k, 4.5 / k]); g.lineCap = 'butt'; g.lineWidth = 5 / k; g.stroke(this.rails); g.setLineDash([]); }
     // desenhos de terreno
-    this.drawStamps(g, k, g === this.g);
+    if (!this.far) this.drawStamps(g, k, g === this.g);
     // fronteiras de nação
     g.strokeStyle = 'rgba(250,245,232,.8)'; g.lineWidth = 5 / k; g.stroke(this.natBorder);
     g.strokeStyle = 'rgba(45,32,20,.9)'; g.lineWidth = 2.2 / k; g.stroke(this.natBorder);
@@ -320,6 +325,11 @@ export class MapView {
       if (dom === 'air') p = { x: st.x, y: st.y };
       else p = st.path.length && st.prog >= 0 ? stackPos(M, st, Math.min(frac, 1) * stackSpeed(S, st) * (M.isLand(st.node) && M.isLand(st.path[0]) ? 1 : 0.6)) : { x: st.x, y: st.y };
       const key = dom === 'air' ? 'a' + st.id : (st.path.length || st.prog > 0 ? 'm' + st.id : 'n' + st.node);
+      if (this.far) { // zoom afastado: um selo pequeno por nação e lugar, com o total de unidades
+        const fk = key[0] === 'n' ? key + st.nat : key, b = slots.get(fk);
+        if (b) { b.n += stackCount(st); continue; }
+        slots.set(fk, { n: stackCount(st), st, x: p.x, y: p.y }); continue;
+      }
       const n = slots.get(key) || 0; slots.set(key, n + 1);
       const ox = n * 14 * sx, oy = -n * 6 * sx;
       // rota
@@ -332,6 +342,20 @@ export class MapView {
       this.drawToken(S, st, p.x + ox, p.y + oy, st.id === this.sel);
       const [scx, scy] = this.toScreen(p.x + ox, p.y + oy); this.hits.push({ id: st.id, x: scx, y: scy });
     }
+    if (this.far) for (const b of slots.values()) { this.drawBadge(S, b.st, b.x, b.y, b.n, b.st.id === this.sel); const [scx, scy] = this.toScreen(b.x, b.y); this.hits.push({ id: b.st.id, x: scx, y: scy + 14 }); }
+  }
+  // selo compacto (zoom afastado): círculo na cor da nação com borda pela relação e o total de unidades
+  drawBadge(S, st, x, y, n, selected) {
+    const g = this.g, sx = 1 / this.k, P = S.opts.player;
+    const r = st.nat === P ? 'self' : rel(S, P, st.nat);
+    const rim = selected ? '#ffd35a' : r === 'self' ? '#f4ecd2' : r === 'guerra' ? '#e0573e' : r === 'aliado' ? '#7fb3e6' : '#3a3128';
+    const nc = st.nat === 'reb' ? '#3c3530' : NATION_BY_ID[st.nat].color;
+    const label = n > 999 ? '1k+' : String(n), R = (label.length > 2 ? 9 : 7.5) * sx;
+    g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.arc(x + 1 * sx, y + 1.5 * sx, R, 0, Math.PI * 2); g.fill();
+    g.fillStyle = mix(nc, '#1c1814', 0.45); g.strokeStyle = rim; g.lineWidth = (selected ? 2.4 : 1.6) * sx;
+    g.beginPath(); g.arc(x, y, R, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.font = `600 ${(label.length > 2 ? 8 : 9) * sx}px Oswald, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#f6efe0'; g.fillText(label, x, y + 0.5 * sx);
   }
   art(u, nat) { const k = UNIT_PNG.has(u) ? u : u + nat; let i = this.artImg[k]; if (!i) { i = new Image(); i.src = UNIT_PNG.has(u) ? unitPngUrl(u) : 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(unitArtSVG(u, nat, 'width="208" height="128"')); this.artImg[k] = i; } return i; }
   drawToken(S, st, x, y, selected) {

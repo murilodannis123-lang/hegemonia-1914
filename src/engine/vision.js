@@ -10,12 +10,14 @@ export function friends(S, nat) {
 }
 export function computeVision(S, M, nat) {
   const fr = friends(S, nat);
+  // nações que compartilham o mapa com a gente entram como "olhos" (sem virar aliadas)
+  const eyesOf = new Set(fr); for (const k of Object.keys(S.sharedMap || {})) { const [a, b] = k.split('|'); if (a === nat) eyesOf.add(b); if (b === nat) eyesOf.add(a); }
   const spied = new Set((S.nations[nat]?.spies || []).filter(s => s.kind === 'info' && s.until > S.hour).map(s => s.target));
   const nodes = new Set(); const eyes = [];
   S.provinces.forEach((sp, i) => {
-    if (fr.has(sp.owner) || spied.has(sp.owner)) { nodes.add(i); for (const e of M.adj[i]) nodes.add(e.to); eyes.push({ x: M.nodes[i].x, y: M.nodes[i].y, r: 80 }); }
+    if (eyesOf.has(sp.owner) || spied.has(sp.owner)) { nodes.add(i); for (const e of M.adj[i]) nodes.add(e.to); eyes.push({ x: M.nodes[i].x, y: M.nodes[i].y, r: 80 }); }
   });
-  for (const st of S.stacks) if (fr.has(st.nat)) {
+  for (const st of S.stacks) if (eyesOf.has(st.nat)) {
     let v = 0; for (const u of Object.keys(st.units)) v = Math.max(v, UNITS[u].view);
     eyes.push({ x: st.x, y: st.y, r: v + 25 });
     if (stackDomain(st) !== 'air') { nodes.add(st.node); if (st.path.length) nodes.add(st.path[0]); }

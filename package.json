@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node tools/build.mjs && node tools/test/simtest.mjs 20 && node tools/test/play.mjs && node tools/test/ui.mjs && node tools/test/end.mjs && node tools/test/move.mjs",
+    "test": "node tools/build.mjs && node tools/test/simtest.mjs 20 && node tools/test/mech.mjs && node tools/test/play.mjs && node tools/test/ui.mjs && node tools/test/end.mjs && node tools/test/move.mjs",
     "build": "node tools/build.mjs"
   },
   "keywords": [],

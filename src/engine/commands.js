@@ -1,7 +1,8 @@
 // Ações (jogador e IA). Todas retornam { ok, msg }.
 import { UNITS, BUILDINGS, MELEE_RANGE } from './defs.js';
 import { addStack, stackDomain, news, event, rngNext } from './state.js';
-import { findPath, canAfford, pay, refund, buildCost, buildTime, unitTime, unitUnlocked, buildUnlocked, relKey, rel, hostile, nname, stackRange, stackPos, leaveCoalition, day, stackHP, stackPower } from './sim.js';
+import { findPath, canAfford, pay, refund, buildCost, buildTime, unitTime, unitUnlocked, buildUnlocked, relKey, rel, hostile, nname, stackRange, stackPos, leaveCoalition, day, stackHP, stackPower, embargoed, tradeBlocked } from './sim.js';
+export { embargoed, tradeBlocked };
 import { aiAnswer } from './ai.js';
 
 const ok = (msg = '') => ({ ok: true, msg });
@@ -154,9 +155,12 @@ export function propose(S, M, from, to, type) {
   if (type === 'paz' && r !== 'guerra') return no('Vocês não estão em guerra.');
   if (type === 'passagem' && r !== 'paz') return no('Só é possível pedir passagem estando em paz.');
   if (type === 'aliado') return no('Use as coligações para alianças.');
+  if (type === 'mapa' && (r === 'guerra' || sharesMap(S, from, to))) return no(r === 'guerra' ? 'Não dá para compartilhar mapa com inimigo.' : 'Vocês já compartilham o mapa.');
   const tn = S.nations[to];
   if (tn.ai) {
     const ans = aiAnswer(S, M, to, from, type);
+    if (ans.accept && type === 'mapa') { S.sharedMap = S.sharedMap || {}; S.sharedMap[relKey(from, to)] = true; event(S, from, `${nname(to)} aceitou compartilhar o mapa.`, 'diplomacia'); return { ok: true, accept: true, msg: ans.text }; }
+    if (!ans.accept && type === 'mapa') { event(S, from, `${nname(to)} recusou compartilhar o mapa.`, 'diplomacia'); return { ok: true, accept: false, msg: ans.text }; }
     if (ans.accept) {
       setRel(S, from, to, type === 'paz' ? 'paz' : 'passagem');
       if (type === 'paz') news(S, `Os diplomatas de ${nname(from)} e ${nname(to)} assinam um tratado de paz.`, 'paz', { title: `Paz entre ${nname(from)} e ${nname(to)}`, nats: [from, to] });
@@ -175,6 +179,7 @@ export function answerProposal(S, M, nat, pid, accept) {
   if (!accept) { opinion(S, p.from, nat, -10); return ok('Recusada.'); }
   if (p.type === 'paz') { setRel(S, p.from, nat, 'paz'); news(S, `Os diplomatas de ${nname(p.from)} e ${nname(nat)} assinam um tratado de paz.`, 'paz', { title: `Paz entre ${nname(p.from)} e ${nname(nat)}`, nats: [p.from, nat] }); }
   else if (p.type === 'passagem') setRel(S, p.from, nat, 'passagem');
+  else if (p.type === 'mapa') { S.sharedMap = S.sharedMap || {}; S.sharedMap[relKey(p.from, nat)] = true; }
   else if (p.type === 'coligacao') { const c = S.coalitions[p.coal]; if (!c) return no('Coligação não existe mais.'); return joinCoalition(S, M, nat, c.id); }
   else if (p.type === 'entrar') { const c = S.coalitions[p.coal]; if (!c) return no('Coligação não existe mais.'); return joinCoalition(S, M, p.from, c.id); }
   else if (p.type === 'alianca') { const r = createCoalition(S, M, nat, 'Aliança ' + nname(nat).split(' ')[0] + '-' + nname(p.from).split(' ')[0]); if (!r.ok) return r; return joinCoalition(S, M, p.from, S.nations[nat].coalition); }
@@ -216,14 +221,19 @@ export const SPY = {
   info: { name: 'Espionagem', cost: 6000, days: 3, desc: 'Revela todas as tropas e províncias da nação alvo por 3 dias.' },
   sabotagem: { name: 'Sabotagem', cost: 9000, days: 0, desc: 'Tenta danificar um edifício de uma província inimiga.' },
   moral: { name: 'Propaganda', cost: 7000, days: 0, desc: 'Derruba a moral de 3 províncias da nação alvo.' },
+  militar: { name: 'Sabotagem militar', cost: 9000, days: 0, desc: 'Fere o maior exército terrestre da nação alvo (−20% de vida).' },
+  economica: { name: 'Sabotagem econômica', cost: 8000, days: 0, desc: 'Destrói 25% do estoque de um recurso da nação alvo.' },
+  contra: { name: 'Contraespionagem', cost: 5000, days: 3, self: true, desc: 'Por 3 dias, espiões inimigos são pegos com muito mais frequência (60%).' },
 };
 export function spy(S, M, nat, target, kind) {
-  const k = SPY[kind]; const n = S.nations[nat]; if (!k || !S.nations[target] || target === nat) return no('Inválido.');
+  const k = SPY[kind]; const n = S.nations[nat]; if (!k) return no('Inválido.');
+  if (k.self) { if (n.res.dinheiro < k.cost) return no('Dinheiro insuficiente.'); n.res.dinheiro -= k.cost; n.counterUntil = S.hour + 72; return ok('Contraespionagem ativa por 3 dias.'); }
+  if (!S.nations[target] || target === nat) return no('Inválido.');
   if (n.res.dinheiro < k.cost) return no('Dinheiro insuficiente.');
   n.res.dinheiro -= k.cost;
   const provs = S.provinces.map((p, i) => [p, i]).filter(([p]) => p.owner === target);
   if (kind === 'info') { n.spies.push({ target, kind, until: S.hour + 72 }); return ok(`Espiões infiltrados em ${nname(target)} por 3 dias.`); }
-  const caught = rngNext(S) < 0.25;
+  const caught = rngNext(S) < ((S.nations[target].counterUntil || 0) > S.hour ? 0.6 : 0.25);
   if (caught) { opinion(S, target, nat, -25); event(S, target, `Capturamos um espião de ${nname(nat)}!`, 'alerta'); return ok('O espião foi capturado. A operação falhou.'); }
   if (kind === 'sabotagem') {
     const withB = provs.filter(([p]) => Object.keys(p.b).length); if (!withB.length) return ok('Nada para sabotar.');
@@ -232,8 +242,45 @@ export function spy(S, M, nat, target, kind) {
     event(S, target, `Sabotagem! ${BUILDINGS[b].name} danificado em ${M.provinces[i].name}.`, 'alerta', i);
     return ok(`Sabotagem: ${BUILDINGS[b].name} danificado em ${M.provinces[i].name}.`);
   }
+  if (kind === 'militar') {
+    const land = S.stacks.filter(o => !o.dead && o.nat === target && stackDomain(o) === 'land'); if (!land.length) return ok('Nenhum exército encontrado.');
+    const big = land.reduce((a, b) => stackHP(b).hp > stackHP(a).hp ? b : a);
+    for (const e of Object.values(big.units)) e.hp *= 0.8;
+    const where = M.nodes[big.node].name; event(S, target, `Sabotagem no exército em ${where}: depósitos de munição explodiram.`, 'alerta', big.node);
+    return ok(`Sabotagem militar: o exército de ${nname(target)} em ${where} perdeu 20% da vida.`);
+  }
+  if (kind === 'economica') {
+    const t = S.nations[target]; const rs = ['graos', 'peixe', 'ferro', 'madeira', 'carvao', 'petroleo', 'gas'].filter(r => t.res[r] > 0);
+    if (!rs.length) return ok('Os depósitos estavam vazios.');
+    const r = rs.reduce((a, b) => t.res[b] > t.res[a] ? b : a); const lost = Math.floor(t.res[r] * 0.25); t.res[r] -= lost;
+    event(S, target, `Sabotagem econômica: perdemos ${lost.toLocaleString('pt-BR')} de ${r}.`, 'alerta');
+    return ok(`Sabotagem econômica: ${nname(target)} perdeu ${lost.toLocaleString('pt-BR')} de ${r}.`);
+  }
   if (kind === 'moral') { for (let j = 0; j < 3 && provs.length; j++) { const [p] = provs[(rngNext(S) * provs.length) | 0]; p.morale = Math.max(5, p.morale - 15); } return ok('Propaganda espalhada: moral inimiga em queda.'); }
   return no('?');
+}
+
+// ---------------- embargo comercial e mapa compartilhado (vale para os dois lados)
+export function setEmbargo(S, M, a, b, on) {
+  if (!S.nations[b] || a === b) return no('Inválido.');
+  S.embargo = S.embargo || {}; const k = relKey(a, b);
+  if (on) { if (S.embargo[k]) return no('Já existe embargo.'); S.embargo[k] = true; opinion(S, b, a, -15); news(S, `${nname(a)} proíbe o comércio com ${nname(b)}. Navios mercantes voltam aos portos.`, 'guerra', { title: `Embargo contra ${nname(b)}`, nats: [a, b] }); event(S, b, `${nname(a)} decretou embargo comercial contra nós.`, 'diplomacia'); return ok(`Embargo comercial contra ${nname(b)}.`); }
+  if (!S.embargo[k]) return no('Não há embargo.'); delete S.embargo[k]; opinion(S, b, a, 5); return ok(`Embargo com ${nname(b)} suspenso.`);
+}
+export const sharesMap = (S, a, b) => !!(S.sharedMap && S.sharedMap[relKey(a, b)]);
+export function stopSharing(S, a, b) { if (!sharesMap(S, a, b)) return no('Vocês não compartilham o mapa.'); delete S.sharedMap[relKey(a, b)]; opinion(S, b, a, -5); return ok('Mapa deixou de ser compartilhado.'); }
+
+// ---------------- mudar a capital (12 h de mudança)
+export const CAPITAL_COST = 15000, CAPITAL_HOURS = 12;
+export function moveCapital(S, M, nat, pid) {
+  const n = S.nations[nat], sp = S.provinces[pid];
+  if (!sp || sp.owner !== nat) return no('A província não é sua.');
+  if (!M.provinces[pid].city) return no('A capital precisa ser uma cidade.');
+  if (n.capital === pid) return no('Esta já é a capital.');
+  if (n.capMove) return no('Já há uma mudança de capital em andamento.');
+  if (n.res.dinheiro < CAPITAL_COST) return no('Dinheiro insuficiente.');
+  n.res.dinheiro -= CAPITAL_COST; n.capMove = { to: pid, at: S.hour + CAPITAL_HOURS };
+  return ok(`O governo começa a mudança para ${M.provinces[pid].name} (${CAPITAL_HOURS} h).`);
 }
 
 // ---------------- relações diretas: visitas e presentes
@@ -254,6 +301,7 @@ export function visit(S, M, from, to) {
 export function gift(S, M, from, to, r, amt) {
   const n = S.nations[from], t = S.nations[to]; amt = Math.floor(amt); if (!t || !t.alive || from === to || !(amt > 0)) return no('Inválido.');
   if (rel(S, from, to) === 'guerra') return no('Não se envia presentes ao inimigo.');
+  if (embargoed(S, from, to)) return no('Há um embargo comercial entre vocês.');
   if (n.res[r] < amt) return no('Estoque insuficiente.');
   n.res[r] -= amt; t.res[r] += amt;
   const val = r === 'dinheiro' ? amt : amt * (S.market.price[r] || 1.5);

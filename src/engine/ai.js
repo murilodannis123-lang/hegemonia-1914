@@ -329,5 +329,9 @@ export function aiAnswer(S, M, ai, from, type) {
     const accept = rel(S, ai, from) !== 'guerra' && (common || op >= 25) && !n.coalition;
     return { accept, text: accept ? `${name}: "Juntos venceremos. Contem conosco."` : `${name}: "Não vemos vantagem nessa aliança."` };
   }
+  if (type === 'mapa') {
+    const accept = rel(S, ai, from) !== 'guerra' && (op >= 20 || rel(S, ai, from) === 'aliado' || wars(S, from).some(w => rel(S, ai, w) === 'guerra'));
+    return { accept, text: accept ? `${name}: "Nossos cartógrafos enviarão os mapas do front."` : `${name}: "Nossos mapas são segredo de Estado."` };
+  }
   return { accept: false, text: `${name} não respondeu.` };
 }

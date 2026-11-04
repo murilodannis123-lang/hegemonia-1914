@@ -4,7 +4,7 @@ import { UNITS, BUILDINGS, RES, RES_INFO, CATS, CAT_NAMES, NEED_PER_PROV, BUILD_
 import { prepareMap } from '../engine/world.js';
 import { setScenario, DEFAULT_SCENARIO, LEGACY_SCENARIO, currentScenario } from '../data/scenarios.js';
 import { newGame, stackDomain, DIFFICULTY } from '../engine/state.js';
-import { step, rel, hostile, nname, day, stackHP, stackCount, stackSpeed, stackRange, stackPower, provIncome, nationIncome, buildCost, buildTime, unitTime, unitUnlocked, buildUnlocked, canAfford, findPath, moraleTarget, scores, isEmbarked, stackPos } from '../engine/sim.js';
+import { step, rel, hostile, nname, day, stackHP, stackCount, stackSpeed, stackRange, stackPower, provIncome, nationIncome, buildCost, buildTime, unitTime, unitUnlocked, buildUnlocked, canAfford, findPath, moraleTarget, scores, isEmbarked, stackPos, corruption } from '../engine/sim.js';
 import * as C from '../engine/commands.js';
 import * as MK from '../engine/market.js';
 import { computeVision } from '../engine/vision.js';
@@ -290,7 +290,7 @@ function provPanel(i) {
       ${own && sp.build ? `<div class="lbl" style="margin-top:8px">Construindo</div><div class="prog"><i style="width:${100 * (1 - sp.build.left / sp.build.total)}%"></i><span>${BUILDINGS[sp.build.type].name} · ${hrs(sp.build.left)}</span></div>` : ''}
       ${own && sp.queue.length ? `<div class="lbl" style="margin-top:8px">Produzindo (${sp.queue.length}/8)</div><div class="prog"><i style="width:${100 * (1 - sp.queue[0].left / sp.queue[0].total)}%"></i><span>${UNITS[sp.queue[0].u].name} · ${hrs(sp.queue[0].left)}</span></div>` : ''}
       ${!own ? `<div class="small muted" style="margin-top:8px">${esc(nname(sp.owner))}${sp.owner !== 'reb' ? ' · relação ' + Math.round(S.nations[sp.owner].opinion[P] || 0) : ''}</div>` : ''}</div>
-    ${own ? `<div class="row" style="gap:10px"><button class="bigbtn" data-p="build">${UI_ICON.martelo}<small>Construir</small></button><button class="bigbtn" data-p="units">${UI_ICON.capacete}<small>Produzir</small></button></div>`
+    ${own ? `<div class="row" style="gap:10px;flex-wrap:wrap"><button class="bigbtn" data-p="build">${UI_ICON.martelo}<small>Construir</small></button><button class="bigbtn" data-p="units">${UI_ICON.capacete}<small>Produzir</small></button>${p.city && S.nations[P].capital !== i ? (S.nations[P].capMove ? `<span class="small muted" style="max-width:120px">Mudando a capital para ${esc(M.provinces[S.nations[P].capMove.to].name)} · ${hrs(S.nations[P].capMove.at - S.hour)}</span>` : `<button class="btn" data-p="capital" title="12 h de mudança">Tornar capital · ${fmt(C.CAPITAL_COST)}</button>`) : ''}</div>`
       : `<div class="row"><button class="btn" data-p="diplo" data-n="${sp.owner}">Diplomacia</button></div>`}
     <div style="min-width:150px"><div class="lbl">Tropas aqui</div><div class="chips">${garrison.length ? garrison.map(s => `<span class="chip" data-p="sel" data-id="${s.id}">${flagSVG(s.nat)} ${stackCount(s)}</span>`).join('') : `<span class="muted small">${vis2 ? 'Nenhuma' : 'Desconhecido'}</span>`}</div></div>
   </div>`;
@@ -334,6 +334,7 @@ $('#panel').addEventListener('click', e => {
   if (a === 'units') openWin('provincia', { prov: selProv, tab: 'terra' });
   if (a === 'sel') { selStack = +b.dataset.id; selProv = -1; }
   if (a === 'diplo') openWin('diplomacia', { nat: b.dataset.n });
+  if (a === 'capital') { const r = C.moveCapital(S, M, P, selProv); toast(r.msg, r.ok ? 'info' : 'alerta'); }
   if (!st) { renderPanel(); return; }
   if (a === 'stop') { const r = C.stop(S, M, P, st.id); toast(r.msg); }
   if (a === 'air') { airMode = b.dataset.m; }
@@ -409,7 +410,8 @@ const WINS = {
     const cats = Object.entries(CATS).map(([c, list]) => { const need = NEED_PER_PROV[c] * inc.nProv; const prod = list.reduce((s, r) => s + inc.prod[r], 0); const stock = list.reduce((s, r) => s + n.res[r], 0);
       return `<div class="card"><div class="lbl">${CAT_NAMES[c]} · consumo da população ${fmt(need)}/dia</div><div class="small">Produção ${fmt(prod)}/dia · estoque ${fmt(stock)} · ${Math.round((n.lastFulfil[c] ?? 1) * 100)}% atendido ontem</div>${stock < need ? '<div class="small neg">Estoque baixo: a moral vai cair se faltar!</div>' : ''}</div>`; }).join('');
     return frame({ title: 'Recursos', cat: 'fabrica', body: `<table class="t"><tr><th>Recurso</th><th>Estoque</th><th>Produção/dia</th><th>Consumo/dia</th><th>Saldo/dia</th></tr>${RES.map(r => { const s = inc.prod[r] - inc.cons[r]; return `<tr><td class="row">${RES_ICON[r]} ${RES_INFO[r].name}</td><td>${fmt(n.res[r])}</td><td>${fmt(inc.prod[r])}</td><td>${fmt(inc.cons[r])}</td><td class="${s >= 0 ? 'pos' : 'neg'}">${s >= 0 ? '+' : ''}${fmt(s)}</td></tr>`; }).join('')}</table>
-      <div class="pad grid2">${cats}</div><div class="pad small muted">A população de cada província consome comida, materiais e energia todo dia. Se faltar, a moral cai e a produção diminui. O consumo de dinheiro inclui a manutenção das tropas. Compre e venda na Bolsa de Valores.</div>` });
+      <div class="pad grid2">${cats}</div><div class="pad small muted">A população de cada província consome comida, materiais e energia todo dia. Se faltar, a moral cai e a produção diminui. O consumo de dinheiro inclui a manutenção das tropas. Compre e venda na Bolsa de Valores.</div>
+      <div class="pad small">Corrupção (império com ${inc.nProv} províncias): <b class="${corruption(S, P) ? 'neg' : ''}">−${Math.round(corruption(S, P) * 100)}%</b> de produção em cada província · Força das tropas por falta de comida/energia: <b>${Math.round((0.7 + 0.3 * Math.min(n.lastFulfil.comida ?? 1, n.lastFulfil.energia ?? 1)) * 100)}%</b> · Escritórios de recrutamento alistam 1 infantaria a cada 3 dias.</div>` });
   },
   bolsa(w) {
     w.res = w.res || 'graos'; w.amt = w.amt || 1000; const r = w.res; const P = S.opts.player, n = S.nations[P];
@@ -429,7 +431,7 @@ const WINS = {
   diplomacia(w) {
     const P = S.opts.player; w.live = true; const sc = scores(S, M);
     const props = S.proposals.filter(p => p.to === P);
-    const pTxt = { paz: 'propõe a paz', passagem: 'pede direito de passagem', coligacao: 'convida para a coligação', entrar: 'quer entrar na sua coligação', alianca: 'propõe uma aliança' };
+    const pTxt = { mapa: 'quer compartilhar o mapa', paz: 'propõe a paz', passagem: 'pede direito de passagem', coligacao: 'convida para a coligação', entrar: 'quer entrar na sua coligação', alianca: 'propõe uma aliança' };
     const nats = Object.values(S.nations).filter(n => n.alive && !n.rebel && n.id !== P).sort((a, b) => (sc[b.id] || 0) - (sc[a.id] || 0));
     const sel = w.nat && S.nations[w.nat] && w.nat !== P ? w.nat : null;
     let detail = '';
@@ -443,6 +445,8 @@ const WINS = {
           ${r === 'paz' ? `<button class="btn" data-act="prop" data-t="passagem">Pedir passagem</button>` : ''}${r === 'passagem' ? `<button class="btn" data-act="revoke">Revogar passagem</button>` : ''}
           ${r !== 'guerra' ? `<button class="btn" data-act="visit" ${vcd ? 'disabled' : ''}>Visita oficial · ${fmt(C.VISIT_COST)}</button>` : ''}
           ${r !== 'guerra' && r !== 'aliado' ? `<button class="btn pri" data-act="ally">${myC ? 'Convidar para a coligação' : 'Propor aliança'}</button>` : ''}
+          ${r !== 'guerra' ? (C.sharesMap(S, P, sel) ? `<button class="btn" data-act="unshare">Parar de compartilhar mapa</button>` : `<button class="btn" data-act="prop" data-t="mapa">Compartilhar mapa</button>`) : ''}
+          ${r !== 'guerra' ? (C.embargoed(S, P, sel) ? `<button class="btn" data-act="embargo" data-on="0">Suspender embargo</button>` : `<button class="btn red" data-act="embargo" data-on="1">Embargo comercial</button>`) : ''}
           <button class="btn" data-act="spyGo">Espionar</button></div>
         ${r !== 'guerra' ? `<div class="row" style="margin-top:10px;flex-wrap:wrap"><span class="small">Enviar presente</span><select id="gres">${RES.map(x => `<option value="${x}">${RES_INFO[x].name}</option>`).join('')}</select><input type="number" id="gamt" value="5000" step="500" style="width:100px"><button class="btn" data-act="gift">Enviar</button></div>` : ''}
         <div class="small muted" style="margin-top:8px">Visitas e presentes melhoram a relação. Com relação Amistosa ou um inimigo em comum, a nação aceita aliança. Aliados entram nas suas guerras.</div></div>`;
@@ -462,8 +466,8 @@ const WINS = {
     const P = S.opts.player; const n = S.nations[P]; w.target = w.target && S.nations[w.target]?.alive ? w.target : Object.keys(S.nations).find(k => k !== P && k !== 'reb' && S.nations[k].alive);
     const act = n.spies.filter(s => s.until > S.hour);
     return frame({ title: 'Espionagem', cat: 'generais', body: `<div class="pad"><div class="row" style="margin-bottom:12px"><span>Nação alvo</span><select id="spyT" data-chg="spyT">${Object.values(S.nations).filter(x => x.alive && !x.rebel && x.id !== P).map(x => `<option value="${x.id}" ${x.id === w.target ? 'selected' : ''}>${esc(nname(x.id))}</option>`).join('')}</select></div>
-      ${Object.entries(C.SPY).map(([k, v]) => `<div class="item"><div class="art">${art('', k === 'info' ? 'generais' : k === 'sabotagem' ? 'explosao' : 'multidao', k.length)}</div><div><div class="nm">${v.name}</div><div class="small muted">${v.desc}</div><div class="costs" style="margin-top:4px">${res('dinheiro', v.cost, n.res.dinheiro)}</div></div><div class="tm">${k === 'info' ? '3 dias' : 'imediato'}<div class="small muted">${k === 'info' ? '' : '25% de risco'}</div></div><div class="acts"><button class="btn pri" data-act="spy" data-k="${k}">Enviar</button></div></div>`).join('')}
-      <div class="card" style="margin-top:12px"><div class="lbl">Operações ativas</div>${act.length ? act.map(s => `<div>${flagSVG(s.target)} ${esc(nname(s.target))} · termina em ${hrs(s.until - S.hour)}</div>`).join('') : '<span class="muted small">Nenhuma</span>'}</div></div>` });
+      ${Object.entries(C.SPY).map(([k, v]) => `<div class="item"><div class="art">${art('', { info: 'generais', sabotagem: 'explosao', militar: 'artilharia', economica: 'fabrica', contra: 'prisioneiros' }[k] || 'multidao', k.length)}</div><div><div class="nm">${v.name}${v.self ? ' <span class="small muted">(no seu país)</span>' : ''}</div><div class="small muted">${v.desc}</div><div class="costs" style="margin-top:4px">${res('dinheiro', v.cost, n.res.dinheiro)}</div></div><div class="tm">${v.days ? v.days + ' dias' : 'imediato'}<div class="small muted">${v.days ? '' : ((S.nations[w.target]?.counterUntil || 0) > S.hour ? '60%' : '25%') + ' de risco'}</div></div><div class="acts"><button class="btn pri" data-act="spy" data-k="${k}">Enviar</button></div></div>`).join('')}
+      <div class="card" style="margin-top:12px"><div class="lbl">Operações ativas</div>${(n.counterUntil || 0) > S.hour ? `<div>Contraespionagem · termina em ${hrs(n.counterUntil - S.hour)}</div>` : ''}${act.length ? act.map(s => `<div>${flagSVG(s.target)} ${esc(nname(s.target))} · termina em ${hrs(s.until - S.hour)}</div>`).join('') : (n.counterUntil || 0) > S.hour ? '' : '<span class="muted small">Nenhuma</span>'}</div></div>` });
   },
   provincias(w) {
     const P = S.opts.player; w.live = true; const list = S.provinces.map((sp, i) => [sp, i]).filter(([sp]) => sp.owner === P);
@@ -517,6 +521,8 @@ const ACTS = {
   war: (b, w) => { if (confirm(`Declarar guerra a ${nname(w.nat)}?`)) toast(C.declareWar(S, M, S.opts.player, w.nat).msg, 'alerta'); },
   prop: (b, w) => { const r = C.propose(S, M, S.opts.player, w.nat, b.dataset.t); toast(r.msg, r.accept === false ? 'alerta' : 'diplomacia'); },
   revoke: (b, w) => toast(C.revokePassage(S, M, S.opts.player, w.nat).msg),
+  embargo: (b, w) => { const r = C.setEmbargo(S, M, S.opts.player, w.nat, b.dataset.on === '1'); toast(r.msg, r.ok ? 'info' : 'alerta'); },
+  unshare: (b, w) => toast(C.stopSharing(S, S.opts.player, w.nat).msg),
   visit: (b, w) => { const r = C.visit(S, M, S.opts.player, w.nat); toast(r.msg, r.ok ? 'diplomacia' : 'alerta'); },
   gift: (b, w) => { const r = C.gift(S, M, S.opts.player, w.nat, $('#gres').value, +$('#gamt').value); toast(r.msg, r.ok ? 'diplomacia' : 'alerta'); },
   ally: (b, w) => { const P = S.opts.player; if (!S.nations[P].coalition) { const r0 = C.createCoalition(S, M, P, 'Aliança ' + nname(P)); if (!r0.ok) return toast(r0.msg, 'alerta'); }

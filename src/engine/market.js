@@ -1,7 +1,7 @@
 // Bolsa de valores: ofertas de compra/venda entre nações + banco (sempre disponível, preço pior).
 import { RES } from './defs.js';
 import { rngNext } from './state.js';
-import { nationIncome, nname } from './sim.js';
+import { nationIncome, nname, tradeBlocked } from './sim.js';
 
 const TRADABLE = RES.filter(r => r !== 'dinheiro');
 export const BASE_PRICE = { graos: 1.2, peixe: 1.2, ferro: 1.6, madeira: 1.2, carvao: 1.5, petroleo: 2.2, gas: 1.8 };
@@ -33,6 +33,7 @@ function returnOffer(S, o) { const n = S.nations[o.nat]; if (!n) return; if (o.s
 // aceitar oferta de outra nação
 export function takeOffer(S, nat, id, amt) {
   const o = S.market.offers.find(x => x.id === id); if (!o || o.nat === nat) return { ok: false, msg: 'Oferta indisponível.' };
+  if (tradeBlocked(S, nat, o.nat)) return { ok: false, msg: `Comércio bloqueado com ${nname(o.nat)} (guerra ou embargo).` };
   const n = S.nations[nat], other = S.nations[o.nat]; amt = Math.min(Math.floor(amt), o.amt); if (amt <= 0) return { ok: false, msg: 'Quantidade inválida.' };
   const val = Math.ceil(amt * o.price);
   if (o.side === 'sell') { if (n.res.dinheiro < val) return { ok: false, msg: 'Dinheiro insuficiente.' }; n.res.dinheiro -= val; n.res[o.res] += amt; other.res.dinheiro += val; }
@@ -66,6 +67,7 @@ export function marketDaily(S, M) {
   for (const b of buys) for (const s of sells) {
     if (b.res !== s.res || b.nat === s.nat || s.amt <= 0 || b.amt <= 0 || s.price > b.price) continue;
     if (!S.nations[b.nat].ai || !S.nations[s.nat].ai) continue;
+    if (tradeBlocked(S, b.nat, s.nat)) continue;
     const amt = Math.min(b.amt, s.amt), price = (s.price + b.price) / 2;
     S.nations[b.nat].res[b.res] += amt; S.nations[s.nat].res.dinheiro += Math.floor(amt * price);
     S.nations[b.nat].res.dinheiro += Math.floor(amt * (b.price - price)); // troco

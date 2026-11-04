@@ -13,6 +13,8 @@ export function rel(S, a, b) {
   return S.rel[relKey(a, b)] || 'paz';
 }
 export const hostile = (S, a, b) => a !== b && rel(S, a, b) === 'guerra';
+export const embargoed = (S, a, b) => !!(S.embargo && S.embargo[relKey(a, b)]);
+export const tradeBlocked = (S, a, b) => a !== b && (rel(S, a, b) === 'guerra' || embargoed(S, a, b));
 export function canEnter(S, nat, owner) { if (owner === nat) return true; const r = rel(S, nat, owner); return r === 'guerra' || r === 'aliado' || r === 'passagem'; }
 export const nname = id => id === 'reb' ? 'Rebeldes' : (NATION_BY_ID[id] ? NATION_BY_ID[id].name : id);
 export const day = S => Math.floor(S.hour / 24) + 1;
@@ -83,10 +85,14 @@ export function provIncome(S, M, pid) {
   let mult = sp.morale / 100;
   if (sp.owner !== sp.core) mult *= 0.6;
   if (p.filler || p.terrain === 'deserto') mult *= 0.65;
+  mult *= 1 - corruption(S, sp.owner);
   let bonus = 1 + (sp.b.fabrica || 0) * 0.15 + (sp.b.ferrovia ? 0.25 : 0) + (sp.b.porto ? 0.1 : 0);
-  const moneyM = p.capital && S.nations[sp.owner].capital === pid ? 1.8 : p.city ? 1.35 : 1;
+  const moneyM = S.nations[sp.owner].capital === pid ? 1.8 : p.city ? 1.35 : 1;
   return { money: BASE_MONEY * mult * moneyM * bonus, res: BASE_RES * mult * (p.double ? 2 : 1) * bonus, type: p.res };
 }
+// impérios grandes perdem um pouco de produção em cada província (corrupção), até 25%
+export function corruption(S, nat) { const c = S.nations[nat]?.nProv || 0; return Math.min(0.25, Math.max(0, c - 20) * 0.004); }
+export function provCounts(S) { const c = {}; S.provinces.forEach(sp => c[sp.owner] = (c[sp.owner] || 0) + 1); for (const n of Object.values(S.nations)) n.nProv = c[n.id] || 0; return c; }
 export function nationIncome(S, M, nat) {
   const out = Object.fromEntries(RES.map(r => [r, 0]));
   S.provinces.forEach((sp, i) => { if (sp.owner !== nat) return; const inc = provIncome(S, M, i); out.dinheiro += inc.money; out[inc.type] += inc.res; });
@@ -138,7 +144,7 @@ function hourlyEconomy(S, M) {
 }
 
 function dailyEconomy(S, M) {
-  const counts = {}; S.provinces.forEach(sp => counts[sp.owner] = (counts[sp.owner] || 0) + 1);
+  const counts = provCounts(S);
   const up = {}; for (const st of S.stacks) for (const [u, e] of Object.entries(st.units)) up[st.nat] = (up[st.nat] || 0) + UNITS[u].upkeep * e.n;
   for (const n of Object.values(S.nations)) {
     if (!n.alive || n.rebel) continue;
@@ -171,6 +177,17 @@ export function moraleTarget(S, M, pid) {
   if (n.lastFulfil.dinheiro === 0) t -= 10;
   if (S.hour - sp.lastCapture < 72) t -= 10;
   return Math.max(5, Math.min(100, t));
+}
+function avgMorale(S) { const t = {}, c = {}; for (const sp of S.provinces) { t[sp.owner] = (t[sp.owner] || 0) + sp.morale; c[sp.owner] = (c[sp.owner] || 0) + 1; } for (const n of Object.values(S.nations)) n.avgMorale = c[n.id] ? t[n.id] / c[n.id] : 80; }
+// escritório de recrutamento alista 1 infantaria a cada 3 dias, se houver comida e a província estiver calma
+function autoRecruit(S, M) {
+  if (day(S) % 3) return;
+  S.provinces.forEach((sp, i) => {
+    if (!sp.b.recrutamento || sp.owner === 'reb' || sp.morale < 40) return; const n = S.nations[sp.owner];
+    if (!n || !n.alive || (n.lastFulfil.comida ?? 1) < 0.5) return;
+    if (S.stacks.some(o => !o.dead && o.node === i && o.prog === 0 && hostile(S, sp.owner, o.nat))) return;
+    addUnitsAt(S, M, sp.owner, i, { infantaria: 1 });
+  });
 }
 function dailyMorale(S, M) {
   for (let i = 0; i < S.provinces.length; i++) {
@@ -342,8 +359,17 @@ function damage(S, M, from, to, mode, opt = {}) {
     if (terr && d.cls === 'arm' && mode === 'atk') x *= terr.armAtk;
     dmg += x; bld += neff(e.n) * hpF * (d.atk.bld || 0);
   }
-  const r = 0.88 + rngNext(S) * 0.24;
-  return { dmg: dmg * r * (opt.mult || 1), bld: bld * r };
+  const r = 0.88 + rngNext(S) * 0.24, f = fightFactor(S, M, from);
+  return { dmg: dmg * r * f * (opt.mult || 1), bld: bld * r * f };
+}
+// moral baixa enfraquece (até 55%) e falta de comida/energia também (até 70%)
+export function fightFactor(S, M, st) {
+  const n = S.nations[st.nat]; if (!n || n.rebel) return 1;
+  const sp = M.isLand(st.node) ? S.provinces[st.node] : null;
+  const m = sp && sp.owner === st.nat ? sp.morale : (n.avgMorale ?? 80);
+  const fm = Math.max(0.55, Math.min(1, m / 85));
+  const fs = 0.7 + 0.3 * Math.min(n.lastFulfil.comida ?? 1, n.lastFulfil.energia ?? 1);
+  return fm * fs;
 }
 function applyDamage(S, M, st, dmg, by) {
   if (dmg <= 0) return 0;
@@ -397,6 +423,7 @@ function combat(S, M) {
         const fDefending = land && (f.nat === owner || rel(S, f.nat, owner) === 'aliado');
         if (fDefending) { dmg /= TERRAIN[M.nodes[node].terrain].def; dmg *= 1 - FORT_REDUCTION[S.provinces[node].b.forte || 0]; }
         if (fEmb) dmg /= EMBARK_DEF;
+        if (!aDefending && !fDefending) dmg *= 2; // campo aberto: ninguém defende uma cidade, batalha decide rápido
         dealt.push([f, dmg, a.nat]);
         if (land && !aDefending && fDefending) damageBuildings(S, M, node, res.bld * 0.25 * stackHP(f).hp / totHP);
       }
@@ -513,13 +540,17 @@ import { communique as communiqueHook } from './commands.js';
 import { marketDaily } from './market.js';
 export function step(S, M) {
   S.hour++;
+  for (const n of Object.values(S.nations)) if (n.capMove && S.hour >= n.capMove.at) {
+    const to = n.capMove.to; n.capMove = null;
+    if (S.provinces[to].owner === n.id) { n.capital = to; news(S, `O governo de ${nname(n.id)} se instala em ${M.provinces[to].name}, a nova capital.`, 'geral', { title: `${nname(n.id)} muda a capital`, nats: [n.id], node: to }); event(S, n.id, `A capital agora é ${M.provinces[to].name}.`, 'info', to); }
+  }
   hourlyEconomy(S, M);
   hourlyProduction(S, M);
   moveStacks(S, M);
   combat(S, M);
   aiTick(S, M);
   if (S.hour % 24 === 0) {
-    dailyEconomy(S, M); dailyMorale(S, M); dailyHeal(S, M); marketDaily(S, M); aiDaily(S, M);
+    dailyEconomy(S, M); dailyMorale(S, M); avgMorale(S); dailyHeal(S, M); autoRecruit(S, M); marketDaily(S, M); aiDaily(S, M);
     for (const n of Object.values(S.nations)) n.spies = (n.spies || []).filter(s => s.until > S.hour);
     checkVictory(S, M);
   }

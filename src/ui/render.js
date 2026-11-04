@@ -23,7 +23,7 @@ export class MapView {
     this.stamp = {}; for (const k of ['montanha', 'colina', 'floresta', 'deserto', 'vila', 'cidade', 'capital']) { const i = new Image(); i.src = `assets/map/${k}.png`; i.onload = () => { this.cacheKey = this.vcKey = null; }; this.stamp[k] = i; }
     this.resImg = {}; for (const r of Object.keys(RES_ICON)) { const i = new Image(); i.src = `assets/res/${r}.png`; this.resImg[r] = i; }
     this.tex = {}; for (const t of ['papel', 'mar']) { const i = new Image(); i.src = `assets/map/${t}.jpg`; i.onload = () => { this.tex[t] = this.g.createPattern(i, 'repeat'); this.halo = null; this.cacheKey = this.vcKey = null; }; }
-    this.noise = this.makeNoise();
+    this.noise = this.makeNoise(); this.wood = this.makeWood();
     this.artImg = {};
     this.unitImg = {}; for (const [u, s] of Object.entries(UNIT_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.replace(' xmlns="http://www.w3.org/2000/svg"', '').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60" color="#f3ead6" ').replace(/currentColor/g, '#f3ead6')); this.unitImg[u] = i; }
     this.resize();
@@ -46,6 +46,21 @@ export class MapView {
       if (!M.isLand(M.nodeAt((A.x + B.x) / 2, (A.y + B.y) / 2))) continue;
       this.roadEdges.push([a, b]); this.roads.moveTo(A.x, A.y); this.roads.lineTo(B.x, B.y);
     }
+  }
+  // mesa de madeira em volta do mapa (textura gerada na hora: veios horizontais com ruído)
+  makeWood() {
+    const W = 512, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); const d = g.createImageData(W, H);
+    let seed = 3; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const rows = Array.from({ length: H }, () => rnd()); const sm = rows.map((_, y) => (rows[(y + H - 1) % H] + rows[y] * 2 + rows[(y + 1) % H]) / 4);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const grain = Math.sin((y + Math.sin(x / 61) * 6 + Math.sin(x / 13) * 1.2) * 0.42) * 0.5 + 0.5;
+      const v = 0.55 + sm[y] * 0.25 + grain * 0.18 + (rnd() - 0.5) * 0.06; const i = (y * W + x) * 4;
+      d.data[i] = 120 * v + 20; d.data[i + 1] = 78 * v + 12; d.data[i + 2] = 44 * v + 6; d.data[i + 3] = 255;
+    }
+    g.putImageData(d, 0, 0);
+    // tábuas
+    g.strokeStyle = 'rgba(30,18,8,.55)'; g.lineWidth = 2; for (let y = 0; y < H; y += 64) { g.beginPath(); g.moveTo(0, y + 0.5); g.lineTo(W, y + 0.5); g.stroke(); }
+    return this.g.createPattern(c, 'repeat');
   }
   makeNoise() {
     // textura de aquarela (ruído fractal que se repete sem emenda)
@@ -94,9 +109,10 @@ export class MapView {
     const g = this.g, M = this.M, k = this.k, P = S.opts.player;
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     // mar
-    const grad = g.createLinearGradient(0, 0, 0, this.h); grad.addColorStop(0, '#5d8f9c'); grad.addColorStop(1, '#3f6f7d');
-    g.fillStyle = grad; g.fillRect(0, 0, this.w, this.h);
+    g.fillStyle = this.wood; g.fillRect(0, 0, this.w, this.h);
     g.setTransform(this.dpr * k, 0, 0, this.dpr * k, this.dpr * this.ox, this.dpr * this.oy);
+    // o mapa é uma folha sobre a mesa: sombra e mar de fundo
+    g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 24 * this.dpr; g.shadowOffsetY = 6 * this.dpr; g.fillStyle = '#4b7d8a'; g.fillRect(0, 0, M.W, M.H); g.restore();
     this.far = k < 0.3;
     const key = (this.far ? 'F' : 'N') + this.mode + '|' + P + '|' + S.provinces.map(p => this.mode === 'moral' ? Math.round(p.morale / 5) : p.owner).join(',') + '|' + (S.opts.fog ? vis.nodes.size + ':' + [...vis.nodes].reduce((a, b) => a + b * 7, 0) : '') + '|' + Object.entries(S.rel).join() + '|' + S.nations[P].coalition + '|' + S.provinces.reduce((a, p) => a + (p.b.ferrovia ? 1 : 0), 0);
     if (key !== this.groupKey) this.buildGroups(S, vis, key);
@@ -325,6 +341,18 @@ export class MapView {
       if (dom === 'air') p = { x: st.x, y: st.y };
       else p = st.path.length && st.prog >= 0 ? stackPos(M, st, Math.min(frac, 1) * stackSpeed(S, st) * (M.isLand(st.node) && M.isLand(st.path[0]) ? 1 : 0.6)) : { x: st.x, y: st.y };
       const key = dom === 'air' ? 'a' + st.id : (st.path.length || st.prog > 0 ? 'm' + st.id : 'n' + st.node);
+      // rota
+      if (st.path.length && dom !== 'air') {
+        // seta da marcha: sua = verde, aliada = azul, inimiga = vermelha, outras = escura. Inimigos só mostram o próximo trecho.
+        const r = st.nat === P ? 'self' : rel(S, P, st.nat);
+        const col = r === 'self' ? '#3f7d32' : r === 'aliado' ? '#3f6fa6' : r === 'guerra' ? '#b8382a' : '#3a3128';
+        const pts = [[p.x, p.y], ...(fr.has(st.nat) || st.id === this.sel ? st.path : st.path.slice(0, 1)).map(nd => [M.nodes[nd].x, M.nodes[nd].y])];
+        g.lineCap = 'round'; g.lineJoin = 'round';
+        g.strokeStyle = 'rgba(250,244,228,.75)'; g.lineWidth = 4.2 * sx; g.setLineDash([9 * sx, 6 * sx]); g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke();
+        g.strokeStyle = col; g.lineWidth = 2.2 * sx; g.stroke(); g.setLineDash([]);
+        const [ax, ay] = pts[pts.length - 1], [bx, by] = pts[pts.length - 2]; const an = Math.atan2(ay - by, ax - bx), L = 11 * sx;
+        g.fillStyle = col; g.strokeStyle = 'rgba(250,244,228,.85)'; g.lineWidth = 1.2 * sx; g.beginPath(); g.moveTo(ax, ay); g.lineTo(ax - L * Math.cos(an - 0.45), ay - L * Math.sin(an - 0.45)); g.lineTo(ax - L * Math.cos(an + 0.45), ay - L * Math.sin(an + 0.45)); g.closePath(); g.fill(); g.stroke();
+      }
       if (this.far) { // zoom afastado: um selo pequeno por nação e lugar, com o total de unidades
         const fk = key[0] === 'n' ? key + st.nat : key, b = slots.get(fk);
         if (b) { b.n += stackCount(st); continue; }
@@ -332,12 +360,6 @@ export class MapView {
       }
       const n = slots.get(key) || 0; slots.set(key, n + 1);
       const ox = n * 14 * sx, oy = -n * 6 * sx;
-      // rota
-      if (st.path.length && (fr.has(st.nat) || st.id === this.sel)) {
-        g.setLineDash([6 * sx, 5 * sx]); g.strokeStyle = st.nat === P ? 'rgba(255,240,190,.75)' : 'rgba(255,190,170,.6)'; g.lineWidth = 1.6 * sx; g.beginPath(); g.moveTo(p.x, p.y);
-        for (const nd of st.path) g.lineTo(M.nodes[nd].x, M.nodes[nd].y); g.stroke(); g.setLineDash([]);
-        const last = M.nodes[st.path[st.path.length - 1]]; g.fillStyle = 'rgba(255,240,190,.8)'; g.beginPath(); g.arc(last.x, last.y, 3 * sx, 0, Math.PI * 2); g.fill();
-      }
       if (dom === 'air' && st.mission && st.mission.type === 'patrol' && st.nat === P) { g.strokeStyle = 'rgba(255,255,255,.35)'; g.setLineDash([4 * sx, 4 * sx]); g.beginPath(); g.arc(st.mission.x, st.mission.y, 70, 0, Math.PI * 2); g.stroke(); g.setLineDash([]); }
       this.drawToken(S, st, p.x + ox, p.y + oy, st.id === this.sel);
       const [scx, scy] = this.toScreen(p.x + ox, p.y + oy); this.hits.push({ id: st.id, x: scx, y: scy });

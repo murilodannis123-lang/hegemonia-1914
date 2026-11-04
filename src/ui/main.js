@@ -6,6 +6,7 @@ import { setScenario, DEFAULT_SCENARIO, LEGACY_SCENARIO, currentScenario } from 
 import { newGame, stackDomain, DIFFICULTY } from '../engine/state.js';
 import { step, rel, hostile, nname, day, stackHP, stackCount, stackSpeed, stackRange, stackPower, provIncome, nationIncome, buildCost, buildTime, unitTime, unitUnlocked, buildUnlocked, canAfford, findPath, moraleTarget, scores, isEmbarked, stackPos, corruption } from '../engine/sim.js';
 import * as C from '../engine/commands.js';
+import { unlockAudio, sfx, sound, setSound } from './audio.js';
 import * as MK from '../engine/market.js';
 import { computeVision } from '../engine/vision.js';
 import { nationPower } from '../engine/ai.js';
@@ -30,6 +31,22 @@ let M, S = null, view, vis = null, speed = 1, acc = 0, lastT = 0, seenEvents = 0
 let pending = null; // ordem esperando confirmação: { id, node, attack, path, eta }
 let selStack = null, selProv = -1, airMode = 'patrol', win = null, lastUi = 0, lastWin = 0, previewKey = '';
 
+// ================= som: libera no primeiro toque; clique em qualquer botão faz 'tic'
+document.addEventListener('pointerdown', unlockAudio, { capture: true, passive: true });
+document.addEventListener('click', e => { if (e.target.closest('button, .natrow, .chip, tr.click, .click')) sfx.click(); }, true);
+const SOUND_OF = { construcao: 'build', producao: 'unit', alerta: 'alert', vitoria: 'capture', derrota: 'defeat', diplomacia: 'paper' };
+let lastSfx = {};
+function eventSound(type) { const k = SOUND_OF[type]; const now = performance.now(); if (!k || now - (lastSfx[k] || 0) < 700) return; lastSfx[k] = now; sfx[k](); }
+let lastBattleSfx = 0, battleFlip = false;
+function battleSounds(t) {
+  if (!S || !speed || t - lastBattleSfx < 1300) return;
+  const [x0, y0] = view.toWorld(0, 0), [x1, y1] = view.toWorld(view.w, view.h);
+  const n = Object.values(S.battles).filter(b => b.x > x0 && b.x < x1 && b.y > y0 && b.y < y1 && (!S.opts.fog || vis.nodes.has(+Object.keys(S.battles).find(k => S.battles[k] === b)))).length;
+  if (!n) return; lastBattleSfx = t; battleFlip = !battleFlip;
+  const v = Math.min(1, 0.35 + n * 0.15) * Math.min(1, view.k * 2.2 + 0.3);
+  battleFlip ? sfx.cannon(v) : sfx.rifles(v);
+}
+
 // ================= inicialização
 async function boot() {
   const raw = await (await fetch('assets/map.json')).json();
@@ -53,6 +70,7 @@ function loop(t) {
   if (S && !$('#menu').innerHTML) {
     view.selProv = selProv; view.sel = selStack;
     try { view.draw(S, vis, speed ? acc / SPEEDS[speed] : 0); } catch (e) { if (!loop.warned) { console.error(e); loop.warned = true; } }
+    battleSounds(t);
     if (t - lastUi > 300) { lastUi = t; try { renderTop(); renderPanel(); } catch (e) { console.error(e); } }
     if (win && win.live && t - lastWin > 1000) { lastWin = t; renderWin(true); }
   }
@@ -62,9 +80,9 @@ function afterStep() {
   vis = computeVision(S, M, S.opts.player);
   // novos eventos -> avisos
   const ev = S.events; const fresh = ev.filter(e => e.id > seenEvents);
-  if (fresh.length) { seenEvents = Math.max(...fresh.map(e => e.id)); unread += fresh.length; renderSide(); fresh.slice(-4).forEach(e => toast(e.text, e.type, e.node)); }
+  if (fresh.length) { seenEvents = Math.max(...fresh.map(e => e.id)); unread += fresh.length; renderSide(); fresh.slice(-4).forEach(e => toast(e.text, e.type, e.node)); fresh.filter(e => !e.nat || e.nat === S.opts.player).slice(-2).forEach(e => eventSound(e.type)); }
   if (selStack && !S.stacks.some(s => s.id === selStack)) selStack = null;
-  if (S.hour % 24 === 0) { save('auto'); newsUnread = true; renderSide(); }
+  if (S.hour % 24 === 0) { save('auto'); newsUnread = true; renderSide(); sfx.paper(); }
   if (S.winner) { save('auto'); showEnd(); }
 }
 
@@ -153,7 +171,7 @@ function renderTop() {
   put($('#top'), `<div class="me" data-w="diplomacia">${flagSVG(P, 'flag round')}<div class="who"><div class="nm">${esc(NATION_BY_ID[P].name)}</div><div class="sub">${n.alive ? 'Seu governo' : 'Derrotado'}</div></div></div>
   <div class="rank">${rank}º<b>${sc[P] || 0}</b></div>
   <div id="res">${RES.map(r => { const net = (inc.prod[r] - inc.cons[r]) / 24; return `<div class="rs" data-w="recursos" title="${RES_INFO[r].name}">${RES_ICON[r]}<div><div class="v">${fmt(n.res[r])}</div><div class="d ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${fmt(net)}/h</div></div></div>`; }).join('')}</div>
-  <div class="clock">Dia <b>${d}</b><br>${String(h).padStart(2, '0')}:00</div>
+  <div class="clock" title="Próximo dia em ${24 - h}h: economia, moral, jornal e salvamento automático">Dia <b>${d}</b> · ${String(h).padStart(2, '0')}:00<div class="nxt">próximo dia em ${24 - h}h</div><div class="dayp"><i style="width:${h / 24 * 100}%"></i></div></div>
   <button class="tbtn" data-w="config" title="Menu">${UI_ICON.menu}</button>`);
 }
 const SIDE = [['jornal', 'Jornal'], ['diplomacia', 'Diplomacia'], ['recursos', 'Recursos'], ['bolsa', 'Bolsa de valores'], ['coligacoes', 'Coligações'], ['espionagem', 'Espionagem'], ['provincias', 'Províncias'], ['exercitos', 'Exércitos'], ['eventos', 'Avisos']];
@@ -163,10 +181,11 @@ function renderSide() {
 }
 function renderSpeed() {
   const modes = { padrao: 'Mapa', politico: 'Político', recursos: 'Recursos', moral: 'Moral' };
-  $('#speed').innerHTML = [['pausa', 0], ['play', 1], ['rapido', 2], ['turbo', 3]].map(([i, v]) => `<button data-sp="${v}" class="${speed === v ? 'on' : ''}" title="${['Pausar', 'Normal', 'Rápido', 'Muito rápido'][v]}">${UI_ICON[i]}</button>`).join('') + `<button class="mode" data-mode="1">${modes[view.mode]}</button>`;
+  $('#speed').innerHTML = [['pausa', 0], ['play', 1], ['rapido', 2], ['turbo', 3]].map(([i, v]) => `<button data-sp="${v}" class="${speed === v ? 'on' : ''}" title="${['Pausar', 'Normal', 'Rápido', 'Muito rápido'][v]}">${UI_ICON[i]}</button>`).join('') + `<button class="mode" data-mode="1">${modes[view.mode]}</button><button data-snd="1" title="${sound.music || sound.sfx ? 'Desligar som' : 'Ligar som'}">${sound.music || sound.sfx ? UI_ICON.som : UI_ICON.mudo}</button>`;
 }
 document.addEventListener('click', e => {
   const w = e.target.closest('[data-w]'); if (w && S && !e.target.closest('#modal')) { if (w.dataset.w === 'eventos') { unread = 0; renderSide(); } if (w.dataset.w === 'jornal') { newsUnread = false; renderSide(); } openWin(w.dataset.w); return; }
+  if (e.target.closest('[data-snd]')) { const on = !(sound.music || sound.sfx); setSound('music', on); setSound('sfx', on); renderSpeed(); return; }
   const sp = e.target.closest('[data-sp]'); if (sp) { speed = +sp.dataset.sp; acc = 0; renderSpeed(); return; }
   if (e.target.closest('[data-mode]')) { const ms = ['padrao', 'politico', 'recursos', 'moral']; view.mode = ms[(ms.indexOf(view.mode) + 1) % ms.length]; renderSpeed(); }
 });
@@ -190,16 +209,30 @@ function setupInput() {
     if (!S) return;
     if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch && pts.size === 2) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); const f = (pinch.k * d / pinch.d) / view.k; view.zoomAt(pinch.cx, pinch.cy, f); moved = true; return; }
-    if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 6) moved = true; if (moved) { view.ox = drag.ox + dx; view.oy = drag.oy + dy; view.clamp(); } return; }
+    if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 6) moved = true; if (moved) { tip(); view.ox = drag.ox + dx; view.oy = drag.oy + dy; view.clamp(); } return; }
     if (e.pointerType === 'mouse') onHover(e.clientX, e.clientY);
   });
   const up = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (pts.size === 0) { if (drag && !moved && S) onTap(e.clientX, e.clientY); drag = null; } };
+  cv.addEventListener('pointerleave', () => tip());
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', e => { pts.delete(e.pointerId); drag = null; pinch = null; });
   cv.addEventListener('wheel', e => { e.preventDefault(); if (S) view.zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
   cv.addEventListener('contextmenu', e => { e.preventDefault(); if (S && selStack) orderAt(e.clientX, e.clientY); });
 }
+// dica ao passar o mouse: tropa (nome, unidades, situação) ou província (dono, pontos, moral se for sua)
+function tip(sx, sy, html) { let t = $('#tip'); if (!t) { t = document.createElement('div'); t.id = 'tip'; $('#app').appendChild(t); } if (!html) { t.style.display = 'none'; return; } if (t._h !== html) { t._h = html; t.innerHTML = html; } t.style.display = 'block'; const r = t.getBoundingClientRect(); t.style.left = Math.min(sx + 16, innerWidth - r.width - 8) + 'px'; t.style.top = Math.min(sy + 14, innerHeight - r.height - 8) + 'px'; }
+function hoverTip(sx, sy, n) {
+  if (!S || win) return tip();
+  const hid = view.hitStack(sx, sy); const P = S.opts.player;
+  if (hid) { const st = S.stacks.find(s => s.id === hid); if (st) { const dom = stackDomain(st); const top = Object.keys(st.units)[0];
+    const sit = st.nat !== P && !C.sharesMap?.(S, P, st.nat) && rel(S, P, st.nat) !== 'aliado' ? '' : dom === 'air' ? (st.mission ? 'Em missão' : 'Na base') : st.fighting ? 'Em combate' : st.path.length ? 'Em marcha → ' + M.nodes[st.path[st.path.length - 1]].name : 'Parada em ' + M.nodes[st.node].name;
+    return tip(sx, sy, `<div class="tt">${flagSVG(st.nat)} <b>${esc(st.name || UNITS[top].name)}</b></div><div class="small">${esc(nname(st.nat))} · ${stackCount(st)} unidades · vida ${Math.round(100 * stackHP(st).hp / stackHP(st).max)}%</div>${sit ? `<div class="small muted">${esc(sit)}</div>` : ''}`); } }
+  if (n < 0 || n >= M.nL) return tip();
+  const p = M.provinces[n], sp = S.provinces[n], own = sp.owner === P;
+  tip(sx, sy, `<div class="tt">${flagSVG(sp.owner)} <b>${esc(p.name)}</b> <span class="muted small">${p.vp} pts</span></div><div class="small">${esc(nname(sp.owner))}${S.nations[sp.owner]?.capital === n ? ' · capital' : p.city ? ' · cidade' : ''} · ${TERRAIN[p.terrain].name}</div>${own ? `<div class="small muted">Moral ${Math.round(sp.morale)}%${sp.build ? ' · construindo ' + BUILDINGS[sp.build.type].name : ''}${sp.queue.length ? ' · produzindo ' + UNITS[sp.queue[0].u].name : ''}</div>` : ''}`);
+}
 function onHover(sx, sy) {
   const [x, y] = view.toWorld(sx, sy); const n = M.nodeAt(x, y); view.hover = n < M.nL ? n : -1;
+  hoverTip(sx, sy, n);
   const st = selStack && S.stacks.find(s => s.id === selStack);
   if (pending) return;
   if (st && st.nat === S.opts.player && stackDomain(st) !== 'air' && n >= 0) {
@@ -245,6 +278,7 @@ function planOrder(st, node, attackId) {
 function confirmOrder() {
   if (!pending) return; const P = S.opts.player, o = pending; clearPending();
   const r = o.attack ? C.attack(S, M, P, o.id, o.attack) : C.move(S, M, P, o.id, o.node);
+  if (r.ok) o.attack ? sfx.cannon(0.5) : sfx.march();
   toast(r.msg, r.ok ? 'info' : 'alerta');
 }
 function orderAt(sx, sy) {
@@ -254,6 +288,7 @@ function orderAt(sx, sy) {
   if (stackDomain(st) === 'air') {
     if (airMode === 'rebase') r = C.airMission(S, M, P, st.id, 'rebase', 0, 0, n);
     else r = C.airMission(S, M, P, st.id, airMode, x, y);
+    if (r.ok) sfx.plane();
   } else { if (n < 0) return; r = C.move(S, M, P, st.id, n); }
   if (!r.ok) toast(r.msg, 'alerta'); view.preview = null; previewKey = '';
 }
@@ -283,6 +318,7 @@ function provPanel(i) {
   const blds = Object.entries(sp.b).map(([b, l]) => `<span class="chip" title="${BUILDINGS[b].name}">${BUILD_ICON[b]} ${BUILDINGS[b].max > 1 ? l : ''}</span>`).join('') || '<span class="muted small">Nenhum edifício</span>';
   return `<div class="ph ${cls}">${own ? '<button class="pa" data-p="pstep" data-d="-1" title="Província anterior">‹</button>' : ''}${flagSVG(sp.owner)}<div class="t">${esc(p.name)}</div>${relTag(sp.owner)}${own ? '<button class="pa" data-p="pstep" data-d="1" title="Próxima província">›</button>' : ''}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
   <div class="pb">
+    <div class="pimg"><div class="vign"><img class="ic spr" src="assets/map/${S.nations[sp.owner]?.capital === i || p.capital ? 'capital' : p.city ? (p.pop > 900000 ? 'cidade' : 'vila') : ['montanha', 'floresta', 'colina', 'deserto'].includes(p.terrain) ? p.terrain : 'colina'}.png" alt=""></div></div>
     <div style="min-width:170px"><div class="lbl">Produção diária</div>
       <div class="row">${RES_ICON.dinheiro}<b>${fmt(inc.money)}</b> ${RES_ICON[p.res]}<b>${fmt(inc.res)}</b></div>
       <div class="small muted" style="margin-top:4px">${TERRAIN[p.terrain].name}${p.double ? ' · recurso duplo' : ''}${p.city ? ' · cidade' : ''}${S.nations[sp.owner]?.capital === i ? ' · capital' : ''} · ${p.vp} pts</div>
@@ -511,6 +547,7 @@ const WINS = {
   },
   config() {
     return frame({ title: 'Menu', cat: 'generais', body: `<div class="pad col">${['1', '2', '3'].map(k => { const i = slotInfo(k); return `<div class="row"><span class="grow">Espaço ${k}: <span class="muted">${i ? esc(nname(i.nat)) + ' · Dia ' + i.day : 'vazio'}</span></span><button class="btn" data-act="saveS" data-k="${k}">Salvar aqui</button><button class="btn" data-act="loadS" data-k="${k}" ${i ? '' : 'disabled'}>Carregar</button></div>`; }).join('')}
+      <div class="card" style="margin-top:10px"><div class="lbl">Som</div><div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn ${sound.music ? 'pri' : ''}" data-act="sndM">Música ${sound.music ? 'ligada' : 'desligada'}</button><button class="btn ${sound.sfx ? 'pri' : ''}" data-act="sndF">Efeitos ${sound.sfx ? 'ligados' : 'desligados'}</button><span class="small">Volume</span><input type="range" min="0" max="1" step="0.05" value="${sound.vol}" data-chg="sndV" style="width:140px"></div></div>
       <div class="row" style="margin-top:10px"><button class="btn" data-act="help">Como jogar</button><button class="btn red" data-act="quit">Sair para o menu</button></div>
       <div class="small muted">O jogo salva sozinho a cada dia de jogo. Atalhos: espaço pausa, Esc fecha janelas, botão direito move a tropa selecionada.</div></div>` });
   },
@@ -562,6 +599,9 @@ const ACTS = {
   spy: (b, w) => { const r = C.spy(S, M, S.opts.player, w.target, b.dataset.k); toast(r.msg, r.ok ? 'info' : 'alerta'); },
   goto: (b) => { const i = +b.dataset.i; view.centerOn(M.nodes[i].x, M.nodes[i].y, Math.max(view.k, 0.5)); selProv = i; selStack = null; closeWin(); },
   provNav: (b, w) => provStep(+b.dataset.d),
+  sndM: () => { setSound('music', !sound.music); renderSpeed(); },
+  sndF: () => { setSound('sfx', !sound.sfx); renderSpeed(); },
+  sndV: (b) => setSound('vol', +b.value),
   psort: (b, w) => { w.sort = b.dataset.k; },
   psel: (b, w) => { const i = +b.dataset.i; w.sel = w.sel.includes(i) ? w.sel.filter(x => x !== i) : [...w.sel, i]; },
   pselAll: (b, w) => { const mine = S.provinces.map((sp, i) => i).filter(i => S.provinces[i].owner === S.opts.player); w.sel = w.sel.length === mine.length ? [] : mine; },

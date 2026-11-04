@@ -98,6 +98,7 @@ export const UI_ICON = {
   fechar: S(`<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2"/>`),
   setaE: S(`<path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2"/>`),
   setaD: S(`<path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"/>`),
+  mudo: S(`<path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`),
   pausa: S(`<rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/>`),
   play: S(`<path d="M7 5l12 7-12 7z" fill="currentColor"/>`),
   rapido: S(`<path d="M3 5l9 7-9 7zM12 5l9 7-9 7z" fill="currentColor"/>`),

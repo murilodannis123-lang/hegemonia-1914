@@ -310,3 +310,14 @@ img.ic.res { object-fit: contain; }
 
 .ph .pa { background: rgba(0,0,0,.3); border: 1px solid #6b604f; border-radius: 6px; color: #f2e9d6; font: 600 22px/1 Oswald, sans-serif; width: 36px; height: 30px; cursor: pointer; flex: none; }
 .ph .pa:hover { background: rgba(208,138,60,.45); }
+
+#top .clock .nxt { font: 400 10px "Source Sans 3", sans-serif; color: #c9bda3; }
+#top .clock .dayp { height: 3px; background: rgba(255,255,255,.12); border-radius: 2px; margin-top: 2px; overflow: hidden; }
+#top .clock .dayp i { display: block; height: 100%; background: #d08a3c; }
+
+#tip { position: fixed; z-index: 40; pointer-events: none; display: none; max-width: 280px; padding: 7px 10px; background: rgba(24,20,16,.93); border: 1px solid #6b604f; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.45); color: #f2e9d6; font-size: 13px; }
+#tip .tt { display: flex; align-items: center; gap: 6px; font: 600 14px Oswald, sans-serif; letter-spacing: .03em; }
+#tip svg.flag { width: 20px; height: 14px; }
+
+.pimg { width: 130px; flex: none; position: relative; align-self: stretch; }
+@media (max-width:760px), (max-height:500px) { .pimg { display: none; } }

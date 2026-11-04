@@ -214,7 +214,6 @@ export class MapView {
     g.strokeStyle = 'rgba(70,55,40,.35)'; g.lineWidth = 0.8 / k; g.stroke(this.allLand);
     // estradas (as tropas andam por elas) e ferrovias
     g.lineCap = 'round'; g.strokeStyle = 'rgba(115,88,55,.5)'; g.lineWidth = 2.6 / k; g.stroke(this.roads);
-    g.setLineDash([5 / k, 5 / k]); g.strokeStyle = 'rgba(250,240,215,.55)'; g.lineWidth = 0.9 / k; g.stroke(this.roads); g.setLineDash([]);
     if (this.rails) { g.strokeStyle = 'rgba(45,35,28,.85)'; g.lineWidth = 1.5 / k; g.stroke(this.rails); g.setLineDash([1.2 / k, 4.5 / k]); g.lineCap = 'butt'; g.lineWidth = 5 / k; g.stroke(this.rails); g.setLineDash([]); }
     // desenhos de terreno
     this.drawStamps(g, k, g === this.g);

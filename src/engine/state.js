@@ -1,4 +1,5 @@
 import { NATIONS } from '../data/nations.js';
+import { setScenario, currentScenario, LEGACY_SCENARIO } from '../data/scenarios.js';
 import { RES } from './defs.js';
 
 export const DIFFICULTY = {
@@ -21,7 +22,8 @@ export function rngNext(S) {
 }
 
 export function newGame(M, opts) {
-  const o = Object.assign({ player: 'fra', difficulty: 'normal', prodSpeed: 1, resources: 'normal', fog: true, unlockAll: false, victory: 0.6, seed: (Math.random() * 1e9) | 0, spectate: false }, opts);
+  const o = Object.assign({ scenario: currentScenario || LEGACY_SCENARIO, player: 'fra', difficulty: 'normal', prodSpeed: 1, resources: 'normal', fog: true, unlockAll: false, victory: 0.6, seed: (Math.random() * 1e9) | 0, spectate: false }, opts);
+  setScenario(M, o.scenario);
   const S = {
     v: 1, rng: o.seed >>> 0, hour: 0, opts: o, nations: {}, provinces: [], stacks: [], nextStack: 1, rel: {},
     market: { price: { graos: 1.2, peixe: 1.2, ferro: 1.6, madeira: 1.2, carvao: 1.5, petroleo: 2.2, gas: 1.8 }, offers: [], nextOffer: 1, hist: [] },

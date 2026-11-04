@@ -2,6 +2,7 @@
 import { NATIONS, NATION_BY_ID } from '../data/nations.js';
 import { UNITS, BUILDINGS, RES, RES_INFO, CATS, CAT_NAMES, NEED_PER_PROV, BUILD_ORDER, UNIT_TABS, TERRAIN, FORT_REDUCTION } from '../engine/defs.js';
 import { prepareMap } from '../engine/world.js';
+import { setScenario, DEFAULT_SCENARIO, LEGACY_SCENARIO, currentScenario } from '../data/scenarios.js';
 import { newGame, stackDomain, DIFFICULTY } from '../engine/state.js';
 import { step, rel, hostile, nname, day, stackHP, stackCount, stackSpeed, stackRange, stackPower, provIncome, nationIncome, buildCost, buildTime, unitTime, unitUnlocked, buildUnlocked, canAfford, findPath, moraleTarget, scores, isEmbarked, stackPos } from '../engine/sim.js';
 import * as C from '../engine/commands.js';
@@ -31,7 +32,7 @@ let selStack = null, selProv = -1, airMode = 'patrol', win = null, lastUi = 0, l
 // ================= inicialização
 async function boot() {
   const raw = await (await fetch('assets/map.json')).json();
-  M = prepareMap(raw);
+  M = prepareMap(raw); setScenario(M, DEFAULT_SCENARIO);
   view = new MapView($('#map'), M);
   setupInput();
   window.addEventListener('resize', () => view.resize());
@@ -72,6 +73,7 @@ function save(slot) { try { localStorage.setItem(SLOT(slot), JSON.stringify({ t:
 function loadSlot(slot) { try { const d = JSON.parse(localStorage.getItem(SLOT(slot)) || 'null'); return d; } catch { return null; } }
 function slotInfo(slot) { const d = loadSlot(slot); if (!d) return null; return { t: d.t, nat: d.S.opts.player, day: Math.floor(d.S.hour / 24) + 1 }; }
 function startGame(state) {
+  setScenario(M, state.opts.scenario || LEGACY_SCENARIO); view.natCenters = null;
   S = state; selStack = null; selProv = -1; win = null; speed = 1; acc = 0; unread = 0;
   seenEvents = S.events.length ? S.events[S.events.length - 1].id : 0;
   vis = computeVision(S, M, S.opts.player);
@@ -107,11 +109,12 @@ function loadMenu() {
 }
 function setupMenu() {
   const m = $('#menu');
-  const o = { player: 'fra', difficulty: 'normal', prodSpeed: 2, resources: 'normal', fog: true, unlockAll: false, victory: 0.6 };
-  const preview = newGame(M, { player: o.player, seed: 1 });
+  const o = { scenario: currentScenario || DEFAULT_SCENARIO, player: 'fra', difficulty: 'normal', prodSpeed: 2, resources: 'normal', fog: true, unlockAll: false, victory: 0.6 };
+  setScenario(M, o.scenario); let preview = newGame(M, { player: o.player, seed: 1 });
   m.innerHTML = `<div class="setup"><div class="mapside"><canvas id="pick"></canvas><div class="hint" style="position:absolute;top:10px">Toque no mapa ou na lista para escolher sua nação</div></div>
    <div class="opts"><div class="ph"><div class="t">Escolha um país</div></div><div class="natlist"></div>
    <div style="border-top:1px solid var(--line);padding:6px 0">
+   ${seg('scenario', 'Mapa', [['historico', '1914 histórico'], ['dividido', '31 nações']])}
    ${seg('difficulty', 'Dificuldade da IA', [['facil', 'Fácil'], ['normal', 'Normal'], ['dificil', 'Difícil']])}
    ${seg('prodSpeed', 'Velocidade de produção', [[1, '1×'], [2, '2×'], [5, '5×'], [10, '10×']])}
    ${seg('resources', 'Recursos iniciais', [['normal', 'Normal'], ['abundante', 'Ricos'], ['infinito', 'Infinitos']])}
@@ -121,7 +124,7 @@ function setupMenu() {
    <div class="row" style="padding:8px 12px;gap:8px"><button class="btn" data-a="voltar">Voltar</button><button class="btn pri grow" data-a="ir">Começar a guerra</button></div></div></div></div>`;
   function seg(k, label, opts) { return `<div class="field"><span>${label}</span><div class="seg" data-k="${k}">${opts.map(([v, t]) => `<button data-v="${v}" class="${String(o[k]) === String(v) ? 'on' : ''}">${t}</button>`).join('')}</div></div>`; }
   const list = m.querySelector('.natlist');
-  const provCount = {}; M.provinces.forEach(p => provCount[p.owner] = (provCount[p.owner] || 0) + 1);
+  let provCount = {}; const countProv = () => { provCount = {}; M.provinces.forEach(p => provCount[p.owner] = (provCount[p.owner] || 0) + 1); }; countProv();
   const drawList = () => { list.innerHTML = NATIONS.slice().sort((a, b) => a.name.localeCompare(b.name)).map(n => `<div class="natrow ${n.id === o.player ? 'on' : ''}" data-n="${n.id}">${flagSVG(n.id)}${esc(n.name)}<small>${provCount[n.id]} prov.</small></div>`).join(''); };
   drawList();
   const cv = m.querySelector('#pick'); const pv = new MapView(cv, M); pv.noStacks = true;
@@ -130,7 +133,9 @@ function setupMenu() {
   cv.onclick = e => { const r = cv.getBoundingClientRect(); const [x, y] = pv.toWorld(e.clientX - r.left, e.clientY - r.top); const n = M.nodeAt(x, y); if (n >= 0 && n < M.nL) { o.player = M.provinces[n].owner; drawList(); draw(); list.querySelector('.on')?.scrollIntoView({ block: 'nearest' }); } };
   m.onclick = e => {
     const nr = e.target.closest('[data-n]'); if (nr) { o.player = nr.dataset.n; drawList(); draw(); return; }
-    const sb = e.target.closest('.seg button'); if (sb) { const k = sb.parentElement.dataset.k; let v = sb.dataset.v; v = v === 'true' ? true : v === 'false' ? false : isNaN(+v) ? v : +v; o[k] = v; sb.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === sb)); return; }
+    const sb = e.target.closest('.seg button'); if (sb) { const k = sb.parentElement.dataset.k; let v = sb.dataset.v; v = v === 'true' ? true : v === 'false' ? false : isNaN(+v) ? v : +v; o[k] = v; sb.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === sb));
+      if (k === 'scenario') { setScenario(M, v); countProv(); if (!NATIONS.some(n => n.id === o.player)) o.player = 'fra'; preview = newGame(M, { player: o.player, seed: 1 }); drawList(); draw(); }
+      return; }
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'voltar') mainMenu();
     if (a === 'ir') { startGame(newGame(M, o)); toast(`Você governa ${nname(o.player)}. Toque numa província para construir e produzir, e nas tropas para movê-las.`, 'info'); }

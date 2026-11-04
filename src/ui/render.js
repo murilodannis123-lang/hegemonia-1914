@@ -248,18 +248,28 @@ export class MapView {
     const g = this.g, M = this.M, k = this.k, P = S.opts.player;
     // nomes das nações (centro das províncias)
     if (!this.natCenters || this.natCentersH !== S.hour) {
-      const acc = {}; S.provinces.forEach((sp, i) => { const a = acc[sp.owner] || (acc[sp.owner] = { x: 0, y: 0, n: 0 }); a.x += M.nodes[i].x; a.y += M.nodes[i].y; a.n++; });
+      const acc = {}; S.provinces.forEach((sp, i) => { const a = acc[sp.owner] || (acc[sp.owner] = { x: 0, y: 0, n: 0, x0: 1e9, x1: -1e9 }); const nd = M.nodes[i]; a.x += nd.x; a.y += nd.y; a.n++; a.x0 = Math.min(a.x0, nd.x); a.x1 = Math.max(a.x1, nd.x); });
       this.natCenters = acc; this.natCentersH = S.hour;
     }
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    if (k < 0.45) for (const [id, a] of Object.entries(this.natCenters)) {
-      if (id === 'reb' || a.n < 2) continue;
-      const size = Math.min(70, 16 + Math.sqrt(a.n) * 7) / Math.max(k, 0.12) * 0.13;
-      g.font = `${size}px "IM Fell English SC", Georgia, serif`;
-      g.fillStyle = id === P ? 'rgba(40,70,35,.55)' : 'rgba(55,40,25,.42)';
-      const name = NATION_BY_ID[id].name.toUpperCase().split('').join(String.fromCharCode(8202));
-      g.fillText(name, a.x / a.n, a.y / a.n);
-    }
+    // zoom afastado: nome grande da nação sobre o território (some aos poucos ao aproximar)
+    const fade = Math.max(0, Math.min(1, (0.45 - k) / 0.1));
+    if (fade > 0) { g.save(); g.globalAlpha = fade; g.lineJoin = 'round';
+      const placed = []; // retângulos já usados (evita nomes encavalados; maiores primeiro)
+      for (const [id, a] of Object.entries(this.natCenters).sort((p, q) => (q[0] === P) - (p[0] === P) || q[1].n - p[1].n)) {
+        if (id === 'reb' || a.n < 2) continue;
+        const name = NATION_BY_ID[id].name.toUpperCase().split('').join(String.fromCharCode(8202));
+        let px = Math.min(30, 11 + Math.sqrt(a.n) * 3) * Math.max(0.65, Math.min(1, k / 0.25));
+        g.font = `700 ${px / k}px "IM Fell English SC", Georgia, serif`;
+        const span = Math.max(a.x1 - a.x0 + 120, 260); let tw = g.measureText(name).width;
+        if (tw > span) { px = Math.max(10, px * span / tw); g.font = `700 ${px / k}px "IM Fell English SC", Georgia, serif`; tw = g.measureText(name).width; }
+        const x = a.x / a.n, y = a.y / a.n + 22 / k, hw = tw / 2 + 4 / k, hh = px * 0.6 / k;
+        if (placed.some(r => Math.abs(r.x - x) < r.hw + hw && Math.abs(r.y - y) < r.hh + hh)) continue;
+        placed.push({ x, y, hw, hh });
+        g.strokeStyle = 'rgba(250,244,228,.8)'; g.lineWidth = 3.5 / k; g.strokeText(name, x, y);
+        g.fillStyle = id === P ? 'rgba(30,62,26,.92)' : 'rgba(52,36,22,.85)'; g.fillText(name, x, y);
+      }
+      g.restore(); }
     // placas nas capitais (bandeira + nome)
     const sx = 1 / k;
     for (const n of Object.values(S.nations)) {
@@ -269,8 +279,8 @@ export class MapView {
       g.font = `600 ${fs}px Oswald, sans-serif`;
       const label = NATION_BY_ID[n.id].name.toUpperCase(); const tw = g.measureText(label).width;
       const x = nd.x, y = nd.y + 26 * sx;
-      g.fillStyle = 'rgba(28,24,20,.82)'; g.fillRect(x - tw / 2 - 6 * sx, y - 8 * sx, tw + 12 * sx, 16 * sx);
-      g.fillStyle = n.id === P ? '#cfe6b8' : '#efe6d2'; g.fillText(label, x, y + 0.5 * sx);
+      if (k >= 0.4) { g.fillStyle = 'rgba(28,24,20,.82)'; g.fillRect(x - tw / 2 - 6 * sx, y - 8 * sx, tw + 12 * sx, 16 * sx);
+        g.fillStyle = n.id === P ? '#cfe6b8' : '#efe6d2'; g.fillText(label, x, y + 0.5 * sx); }
       const fi = flagImage(n.id); if (fi.complete && fi.naturalWidth) { g.save(); g.beginPath(); g.arc(x, y - 22 * sx, 9 * sx, 0, Math.PI * 2); g.closePath(); g.fillStyle = '#1c1814'; g.fill(); g.clip(); g.drawImage(fi, x - 13 * sx, y - 30.5 * sx, 26 * sx, 17 * sx); g.restore(); g.strokeStyle = '#1c1814'; g.lineWidth = 2 * sx; g.beginPath(); g.arc(x, y - 22 * sx, 9 * sx, 0, Math.PI * 2); g.stroke(); }
     }
     // cidades e nomes de províncias

@@ -85,14 +85,14 @@ function startGame(state) {
 function mainMenu() {
   S = null; const m = $('#menu'); m.classList.remove('hidden');
   const auto = slotInfo('auto');
-  m.innerHTML = `<div class="menubg" style="--banner:${banner('trincheira', 0)}"></div><div class="menuc">
+  m.innerHTML = `<div class="menubg" style="--banner:url(&quot;assets/menu.jpg&quot;)"></div><div class="menuc">
     <div class="logo">Hegemonia<span>1914</span></div>
     <div class="tagline">Comande uma nação na Grande Guerra. Construa, produza, negocie, faça alianças e conquiste a Europa contra 30 nações controladas pelo computador.</div>
     ${auto ? `<button class="mbtn" data-a="cont">Continuar<small>${esc(nname(auto.nat))} · Dia ${auto.day}</small></button>` : ''}
     <button class="mbtn" data-a="novo">Novo jogo<small>Escolha sua nação e as regras da partida</small></button>
     <button class="mbtn" data-a="carregar">Carregar<small>Partidas salvas neste aparelho</small></button>
     <button class="mbtn" data-a="ajuda">Como jogar<small>O básico em 1 minuto</small></button>
-    <div class="credits">Mapa: Natural Earth e GeoNames. Fotografias históricas: Wikimedia Commons (domínio público). Jogo pessoal, sem fins comerciais.</div></div>`;
+    <div class="credits">Mapa: Natural Earth e GeoNames. Fotografias históricas: Wikimedia Commons (domínio público). Ilustrações geradas com Gemini. Jogo pessoal, sem fins comerciais.</div></div>`;
   m.onclick = e => { const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
     if (a === 'cont') { const d = loadSlot('auto'); if (d) startGame(d.S); }
     if (a === 'novo') setupMenu();
@@ -330,7 +330,7 @@ $('#modal').addEventListener('click', e => {
 });
 $('#modal').addEventListener('change', e => { const a = e.target.closest('[data-chg]'); if (a && win) { const fn = ACTS[a.dataset.chg]; if (fn) { fn(a, win); renderWin(); } } });
 function res(r, v, have) { return `<span class="cost ${have != null && have < v ? 'no' : ''}">${RES_ICON[r]}${fmt(v)}</span>`; }
-function art(unitOrBuild, cat, seed) { return `<div class="vign">${UNITS[unitOrBuild] ? unitHTML(unitOrBuild, S.opts.player, 'ic') : BUILD_ICON[unitOrBuild] || ''}<img loading="lazy" src="${photoFor(cat, seed)}" alt="" onerror="this.remove()"></div>`; }
+function art(unitOrBuild, cat, seed) { return `<div class="vign">${UNITS[unitOrBuild] ? unitHTML(unitOrBuild, S.opts.player, 'ic') : BUILDINGS[unitOrBuild] ? `<img class="ic spr" src="assets/buildings/${unitOrBuild}.png" alt="">` : ''}<img loading="lazy" src="${photoFor(cat, seed)}" alt="" onerror="this.remove()"></div>`; }
 
 const WINS = {
   provincia(w) {
@@ -430,7 +430,7 @@ const WINS = {
   },
   provincias(w) {
     const P = S.opts.player; w.live = true; const list = S.provinces.map((sp, i) => [sp, i]).filter(([sp]) => sp.owner === P);
-    return frame({ title: 'Administração das províncias', cat: 'fabrica', wide: true, body: `<table class="t"><tr><th>Província</th><th>Moral</th><th>Produz/dia</th><th>Edifícios</th><th>Construção</th><th>Fila</th><th></th></tr>${list.map(([sp, i]) => { const inc = provIncome(S, M, i); const p = M.provinces[i]; return `<tr><td><b class="click" data-act="goto" data-i="${i}" style="cursor:pointer">${esc(p.name)}</b>${S.nations[P].capital === i ? ' ★' : ''}</td><td><span style="color:hsl(${sp.morale * 1.1},55%,60%)">${Math.round(sp.morale)}%</span></td><td>${RES_ICON.dinheiro}${fmt(inc.money)} ${RES_ICON[p.res]}${fmt(inc.res)}</td><td>${Object.entries(sp.b).map(([b, l]) => `<span title="${BUILDINGS[b].name}">${BUILD_ICON[b]}${BUILDINGS[b].max > 1 ? l : ''}</span>`).join(' ')}</td><td class="small">${sp.build ? BUILDINGS[sp.build.type].name + ' · ' + hrs(sp.build.left) : '—'}</td><td class="small">${sp.queue.length ? sp.queue.length + ' · ' + UNITS[sp.queue[0].u].name : '—'}</td><td><button class="btn" data-act="openProv" data-i="${i}">Abrir</button></td></tr>`; }).join('')}</table>` });
+    return frame({ title: 'Administração das províncias', cat: 'fabrica', wide: true, body: `<table class="t"><tr><th>Província</th><th>Pts</th><th>Moral</th><th>Produz/dia</th><th>Edifícios</th><th>Construção</th><th>Fila</th><th></th></tr>${list.map(([sp, i]) => { const inc = provIncome(S, M, i); const p = M.provinces[i]; return `<tr><td><b class="click" data-act="goto" data-i="${i}" style="cursor:pointer">${esc(p.name)}</b>${S.nations[P].capital === i ? ' ★' : ''}</td><td>${p.vp}</td><td><span style="color:hsl(${sp.morale * 1.1},55%,60%)">${Math.round(sp.morale)}%</span></td><td>${RES_ICON.dinheiro}${fmt(inc.money)} ${RES_ICON[p.res]}${fmt(inc.res)}</td><td>${Object.entries(sp.b).map(([b, l]) => `<span title="${BUILDINGS[b].name}">${BUILD_ICON[b]}${BUILDINGS[b].max > 1 ? l : ''}</span>`).join(' ')}</td><td class="small">${sp.build ? BUILDINGS[sp.build.type].name + ' · ' + hrs(sp.build.left) : '—'}</td><td class="small">${sp.queue.length ? sp.queue.length + ' · ' + UNITS[sp.queue[0].u].name : '—'}</td><td style="white-space:nowrap"><button class="btn" data-act="openProv" data-i="${i}" data-t="edificios">Construir</button> <button class="btn" data-act="openProv" data-i="${i}" data-t="terra">Produzir</button></td></tr>`; }).join('')}</table>` });
   },
   exercitos(w) {
     const P = S.opts.player; w.live = true; const list = S.stacks.filter(s => s.nat === P);
@@ -491,7 +491,7 @@ const ACTS = {
   spyT: (el, w) => { w.target = el.value; },
   spy: (b, w) => { const r = C.spy(S, M, S.opts.player, w.target, b.dataset.k); toast(r.msg, r.ok ? 'info' : 'alerta'); },
   goto: (b) => { const i = +b.dataset.i; view.centerOn(M.nodes[i].x, M.nodes[i].y, Math.max(view.k, 0.5)); selProv = i; selStack = null; closeWin(); },
-  openProv: (b) => { const i = +b.dataset.i; selProv = i; win = { name: 'provincia', prov: i, tab: 'edificios' }; },
+  openProv: (b) => { const i = +b.dataset.i; selProv = i; win = { name: 'provincia', prov: i, tab: b.dataset.t || 'edificios' }; },
   selS: (b) => { const st = S.stacks.find(s => s.id === +b.dataset.id); if (st) { selStack = st.id; selProv = -1; view.centerOn(st.x, st.y, Math.max(view.k, 0.5)); } closeWin(); },
   evGo: (b) => { const n = b.dataset.n; if (n !== '') { const i = +n; view.centerOn(M.nodes[i].x, M.nodes[i].y, Math.max(view.k, 0.5)); if (i < M.nL) { selProv = i; selStack = null; } } closeWin(); },
   saveS: (b) => { if (save(b.dataset.k)) toast('Jogo salvo no espaço ' + b.dataset.k + '.'); },

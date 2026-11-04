@@ -195,7 +195,7 @@ input[type=range] { accent-color: var(--accent); }
 /* ---------------- menus */
 #menu { position: absolute; inset: 0; z-index: 60; overflow-y: auto; background: #120f0c; }
 #menu.hidden { display: none; }
-.menubg { position: fixed; inset: 0; background: linear-gradient(90deg, rgba(15,12,9,.92) 0%, rgba(15,12,9,.6) 45%, rgba(15,12,9,.25) 100%), var(--banner) center/cover; filter: sepia(.4); }
+.menubg { position: fixed; inset: 0; background: linear-gradient(90deg, rgba(15,12,9,.92) 0%, rgba(15,12,9,.6) 45%, rgba(15,12,9,.25) 100%), var(--banner) 70% center/cover; filter: sepia(.15); }
 .menuc { position: relative; min-height: 100%; display: flex; flex-direction: column; justify-content: center; padding: 40px 6vw calc(30px + var(--safe-b)); max-width: 640px; }
 .logo { font: 600 64px/0.95 Oswald; text-transform: uppercase; letter-spacing: .04em; color: #f4ead4; text-shadow: 0 4px 18px rgba(0,0,0,.7); }
 .logo span { display: block; font: 76px/1 Unifraktur, serif; color: var(--accent2); text-transform: none; letter-spacing: 0; }

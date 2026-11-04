@@ -4,12 +4,14 @@ import sys, collections
 from PIL import Image, ImageFilter
 import numpy as np
 src, cols, rows, out, names = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], sys.argv[5].split(',')
+I = int(sys.argv[6]) if len(sys.argv) > 6 else 6  # margem interna (pula linhas de grade)
+MAX = int(sys.argv[7]) if len(sys.argv) > 7 else 240
 im = Image.open(src).convert('RGB'); W, H = im.size; a = np.array(im).astype(int)
 cw, ch = W / cols, H / rows
 for k, name in enumerate(names):
     if not name or name == '-': continue
     c, r = k % cols, k // cols
-    x0, y0, x1, y1 = int(c * cw) + 6, int(r * ch) + 6, int((c + 1) * cw) - 6, int((r + 1) * ch) - 6
+    x0, y0, x1, y1 = int(c * cw) + I, int(r * ch) + I, int((c + 1) * cw) - I, int((r + 1) * ch) - I
     cell = a[y0:y1, x0:x1]; h, w, _ = cell.shape
     white = (cell.min(axis=2) > 222) & ((cell.max(axis=2) - cell.min(axis=2)) < 22)
     bg = np.zeros((h, w), bool); q = collections.deque()
@@ -27,5 +29,5 @@ for k, name in enumerate(names):
     alpha = Image.fromarray(np.where(bg, 0, 255).astype('uint8')).filter(ImageFilter.GaussianBlur(0.7))
     rgba = Image.fromarray(cell.astype('uint8')).convert('RGBA'); rgba.putalpha(alpha)
     bbox = rgba.getbbox(); rgba = rgba.crop(bbox)
-    s = min(1, 240 / max(rgba.size)); rgba = rgba.resize((max(1, round(rgba.width * s)), max(1, round(rgba.height * s))), Image.LANCZOS)
+    s = min(1, MAX / max(rgba.size)); rgba = rgba.resize((max(1, round(rgba.width * s)), max(1, round(rgba.height * s))), Image.LANCZOS)
     rgba.save(f'{out}/{name}.png', optimize=True); print(name, rgba.size)

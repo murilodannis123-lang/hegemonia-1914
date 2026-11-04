@@ -18,7 +18,7 @@ export class MapView {
     this.allLand = new Path2D(); this.paths.forEach(p => this.allLand.addPath(p));
     this.buildEdges();
     this.glyphs = this.makeGlyphs();
-    this.stamp = {}; for (const k of ['montanha', 'colina', 'floresta', 'deserto', 'cidade', 'capital']) { const i = new Image(); i.src = `assets/map/${k}.png`; i.onload = () => { this.cacheKey = null; }; this.stamp[k] = i; }
+    this.stamp = {}; for (const k of ['montanha', 'colina', 'floresta', 'deserto', 'vila', 'cidade', 'capital']) { const i = new Image(); i.src = `assets/map/${k}.png`; i.onload = () => { this.cacheKey = null; }; this.stamp[k] = i; }
     this.resImg = {}; for (const [r, svgs] of Object.entries(RES_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgs.replace(' xmlns="http://www.w3.org/2000/svg"', '').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" ')); this.resImg[r] = i; }
     this.noise = this.makeNoise();
     this.artImg = {};
@@ -125,15 +125,15 @@ export class MapView {
   drawStamps(g, k, clipView) {
     let x0 = -1e9, y0 = -1e9, x1 = 1e9, y1 = 1e9;
     if (clipView) { [x0, y0] = this.toWorld(-60, -60); [x1, y1] = this.toWorld(this.w + 60, this.h + 60); }
-    const SZ = { montanha: [56, 38], colina: [40, 19], floresta: [44, 32], deserto: [44, 16] };
+    const SZ = { montanha: 44, colina: 34, floresta: 36, deserto: 36 };
     for (const [t, x, y, s0] of this.glyphs) {
       if (x < x0 || x > x1 || y < y0 || y > y1) continue; const im = this.stamp[t]; if (!im || !im.complete || !im.naturalWidth) continue;
-      const [w, h] = SZ[t]; const f = s0; g.drawImage(im, x - w * f / 2, y - h * f, w * f, h * f);
+      const w = SZ[t] * s0, h = w * im.naturalHeight / im.naturalWidth; g.drawImage(im, x - w / 2, y - h * 0.8, w, h);
     }
     for (const p of this.M.provinces) {
       if (!p.city || p.x < x0 || p.x > x1 || p.y < y0 || p.y > y1) continue;
-      const im = this.stamp[p.capital ? 'capital' : 'cidade']; if (!im || !im.complete || !im.naturalWidth) continue;
-      const w = p.capital ? 42 : 30, h = w * im.naturalHeight / im.naturalWidth; g.drawImage(im, p.x + 18, p.y - h * 0.7, w, h);
+      const im = this.stamp[p.capital ? 'capital' : p.pop > 900000 ? 'cidade' : 'vila']; if (!im || !im.complete || !im.naturalWidth) continue;
+      const w = p.capital ? 46 : p.pop > 900000 ? 38 : 32, h = w * im.naturalHeight / im.naturalWidth; g.drawImage(im, p.x + 18, p.y - h * 0.7, w, h);
     }
   }
   drawTerrain(g, k) {
@@ -243,7 +243,11 @@ export class MapView {
         const nd = M.nodes[p.id];
         g.fillStyle = p.city ? 'rgba(40,30,20,.85)' : 'rgba(40,30,20,.55)';
         g.beginPath(); g.arc(nd.x, nd.y, (p.city ? 3 : 2) * sx, 0, Math.PI * 2); g.fill();
-        if (k > 0.55 || p.city) { g.fillStyle = 'rgba(35,28,20,.8)'; g.fillText(p.name, nd.x, nd.y - (p.city ? 42 : 40) * sx); }
+        if (k > 0.55 || p.city) { const ly = nd.y - 66 * sx; g.fillStyle = 'rgba(35,28,20,.8)'; g.fillText(p.name, nd.x, ly);
+          // pontos de vitória da província (selo ao lado do nome)
+          const bx = nd.x + g.measureText(p.name).width / 2 + 9 * sx, r = 6.5 * sx;
+          g.fillStyle = p.vp >= 5 ? '#b8902c' : p.vp >= 2 ? '#7a5a2a' : 'rgba(70,58,40,.75)'; g.beginPath(); g.arc(bx, ly, r, 0, Math.PI * 2); g.fill();
+          g.fillStyle = '#f6ecd2'; g.font = `700 ${9 * sx}px Oswald, sans-serif`; g.fillText(p.vp, bx, ly + 0.5 * sx); g.font = `${10.5 * sx}px "Source Sans 3", sans-serif`; }
         if (k > 0.5) { const ri = this.resImg[p.res]; if (ri && ri.complete && ri.naturalWidth) { const z = (p.double ? 17 : 13) * sx; g.drawImage(ri, nd.x + 16 * sx, nd.y + 8 * sx, z, z); if (p.double) g.drawImage(ri, nd.x + 26 * sx, nd.y + 8 * sx, z, z); } }
       }
     }

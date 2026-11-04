@@ -214,7 +214,11 @@ function onTap(sx, sy) {
   const st = selStack && S.stacks.find(s => s.id === selStack);
   if (st && st.nat === S.opts.player) {
     if (hit === st.id) { selStack = null; view.preview = null; hint(); return; }
-    if (hit) { const t = S.stacks.find(s => s.id === hit); if (t.nat !== S.opts.player && hostile(S, S.opts.player, t.nat)) { const r = C.attack(S, M, S.opts.player, st.id, t.id); toast(r.msg, r.ok ? 'info' : 'alerta'); return; } selStack = hit; selProv = -1; return; }
+    if (hit) { const t = S.stacks.find(s => s.id === hit); if (t.nat !== S.opts.player && hostile(S, S.opts.player, t.nat)) { const r = C.attack(S, M, S.opts.player, st.id, t.id); toast(r.msg, r.ok ? 'info' : 'alerta'); return; }
+      // toda província tem guarnição: tocar numa tropa amiga com uma tropa selecionada é ordem de ir até lá, não trocar a seleção
+      if (stackDomain(st) === 'air') return orderAt(sx, sy);
+      if (stackDomain(t) !== 'air' && !t.path.length && t.prog === 0) { const r = C.move(S, M, S.opts.player, st.id, t.node); if (!r.ok) toast(r.msg, 'alerta'); view.preview = null; previewKey = ''; return; }
+      return orderAt(sx, sy); }
     return orderAt(sx, sy);
   }
   if (hit) { selStack = hit; selProv = -1; return; }
@@ -285,7 +289,7 @@ function stackPanel(st) {
       <div class="stats" style="margin-top:8px"><span>${UI_ICON.raio} <b>${atk.toFixed(0)}</b></span><span>${UI_ICON.escudo} <b>${def.toFixed(0)}</b></span><span>${UI_ICON.velocidade} <b>${stackSpeed(S, st)}</b> km/h</span>${dom === 'air' ? `<span>alcance <b>${stackRange(st)}</b> km</span>` : ''}</div>
       <div class="small" style="margin-top:6px">${esc(where)}${eta}</div></div>
     <div class="grow"><div class="lbl">Unidades</div><div class="chips">${Object.entries(st.units).map(([u, e]) => `<span class="uchip" title="${UNITS[u].name}">${UA(u, st.nat)}<b>${e.n}×</b><small>${UNITS[u].name}</small></span>`).join('')}</div>
-      ${own && dom !== 'air' ? `<div class="small muted" style="margin-top:8px"><b>Mover:</b> toque no destino no mapa · <b>Atacar:</b> toque numa tropa inimiga</div>` : ''}
+      ${own && dom !== 'air' ? `<div class="small muted" style="margin-top:8px"><b>Mover:</b> toque no destino · <b>Atacar:</b> toque no inimigo · <b>Soltar:</b> toque de novo nesta tropa</div>` : ''}
       ${own && dom === 'air' ? `<div class="small muted" style="margin-top:8px">Escolha a missão e toque no mapa (dentro do círculo de alcance)</div>` : ''}</div>
     ${own ? `<div class="acts2">
       ${dom === 'air' ? `<button class="abtn ${airMode === 'patrol' ? 'on' : ''}" data-p="air" data-m="patrol" title="Patrulhar uma área">${UI_ICON.patrulha}Patrulhar</button><button class="abtn ${airMode === 'strike' ? 'on' : ''}" data-p="air" data-m="strike" title="Atacar um alvo">${UI_ICON.alvo}Atacar</button><button class="abtn ${airMode === 'rebase' ? 'on' : ''}" data-p="air" data-m="rebase" title="Mudar para outro aeródromo">${UI_ICON.base}Nova base</button>` : ''}

@@ -12,15 +12,15 @@ const RES_COLOR = { graos: '#d8c06a', peixe: '#7fa9bd', ferro: '#8e939b', madeir
 export class MapView {
   constructor(canvas, M) {
     this.c = canvas; this.g = canvas.getContext('2d'); this.M = M;
-    this.k = 0.2; this.ox = 0; this.oy = 0; this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.k = 0.2; this.ox = 0; this.oy = 0; this.dpr = Math.min(1.5, window.devicePixelRatio || 1); this.lastZoom = 0;
     this.mode = 'padrao'; this.sel = null; this.selProv = -1; this.hover = -1; this.preview = null; this.airMode = null;
     this.paths = M.provinces.map(p => { const P = new Path2D(); for (const poly of p.poly) for (const r of poly) { P.moveTo(r[0], r[1]); for (let i = 2; i < r.length; i += 2) P.lineTo(r[i], r[i + 1]); P.closePath(); } return P; });
     this.allLand = new Path2D(); this.paths.forEach(p => this.allLand.addPath(p));
     this.buildEdges(); this.buildRoads();
     this.glyphs = this.makeGlyphs();
-    this.stamp = {}; for (const k of ['montanha', 'colina', 'floresta', 'deserto', 'vila', 'cidade', 'capital']) { const i = new Image(); i.src = `assets/map/${k}.png`; i.onload = () => { this.cacheKey = null; }; this.stamp[k] = i; }
+    this.stamp = {}; for (const k of ['montanha', 'colina', 'floresta', 'deserto', 'vila', 'cidade', 'capital']) { const i = new Image(); i.src = `assets/map/${k}.png`; i.onload = () => { this.cacheKey = this.vcKey = null; }; this.stamp[k] = i; }
     this.resImg = {}; for (const r of Object.keys(RES_ICON)) { const i = new Image(); i.src = `assets/res/${r}.png`; this.resImg[r] = i; }
-    this.tex = {}; for (const t of ['papel', 'mar']) { const i = new Image(); i.src = `assets/map/${t}.jpg`; i.onload = () => { this.tex[t] = this.g.createPattern(i, 'repeat'); this.halo = null; this.cacheKey = null; }; }
+    this.tex = {}; for (const t of ['papel', 'mar']) { const i = new Image(); i.src = `assets/map/${t}.jpg`; i.onload = () => { this.tex[t] = this.g.createPattern(i, 'repeat'); this.halo = null; this.cacheKey = this.vcKey = null; }; }
     this.noise = this.makeNoise();
     this.artImg = {};
     this.unitImg = {}; for (const [u, s] of Object.entries(UNIT_ICON)) { const i = new Image(); i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s.replace(' xmlns="http://www.w3.org/2000/svg"', '').replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60" color="#f3ead6" ').replace(/currentColor/g, '#f3ead6')); this.unitImg[u] = i; }
@@ -55,6 +55,7 @@ export class MapView {
     g.putImageData(d, 0, 0); const pat = this.g.createPattern(c, 'repeat'); pat.setTransform && pat.setTransform(new DOMMatrix().scale(3.5)); return pat;
   }
   resize() {
+    this.vcKey = null;
     const r = this.c.getBoundingClientRect(); this.w = r.width; this.h = r.height;
     this.c.width = Math.round(r.width * this.dpr); this.c.height = Math.round(r.height * this.dpr);
     this.minK = Math.min(this.w / this.M.W, this.h / this.M.H) * 0.9;
@@ -68,7 +69,7 @@ export class MapView {
   }
   toWorld(sx, sy) { return [(sx - this.ox) / this.k, (sy - this.oy) / this.k]; }
   toScreen(x, y) { return [x * this.k + this.ox, y * this.k + this.oy]; }
-  zoomAt(sx, sy, f) { const [x, y] = this.toWorld(sx, sy); this.k *= f; this.clamp(); this.ox = sx - x * this.k; this.oy = sy - y * this.k; this.clamp(); }
+  zoomAt(sx, sy, f) { const [x, y] = this.toWorld(sx, sy); this.k *= f; this.lastZoom = performance.now(); this.clamp(); this.ox = sx - x * this.k; this.oy = sy - y * this.k; this.clamp(); }
   centerOn(x, y, k) { if (k) this.k = k; this.clamp(); this.ox = this.w / 2 - x * this.k; this.oy = this.h / 2 - y * this.k; this.clamp(); }
 
   provColor(S, i, vis) {
@@ -92,7 +93,6 @@ export class MapView {
     const grad = g.createLinearGradient(0, 0, 0, this.h); grad.addColorStop(0, '#5d8f9c'); grad.addColorStop(1, '#3f6f7d');
     g.fillStyle = grad; g.fillRect(0, 0, this.w, this.h);
     g.setTransform(this.dpr * k, 0, 0, this.dpr * k, this.dpr * this.ox, this.dpr * this.oy);
-    if (this.tex.mar) { g.fillStyle = this.tex.mar; g.fillRect(0, 0, M.W, M.H); }
     const key = this.mode + '|' + P + '|' + S.provinces.map(p => this.mode === 'moral' ? Math.round(p.morale / 5) : p.owner).join(',') + '|' + (S.opts.fog ? vis.nodes.size + ':' + [...vis.nodes].reduce((a, b) => a + b * 7, 0) : '') + '|' + Object.entries(S.rel).join() + '|' + S.nations[P].coalition + '|' + S.provinces.reduce((a, p) => a + (p.b.ferrovia ? 1 : 0), 0);
     if (key !== this.groupKey) this.buildGroups(S, vis, key);
     if (k < 0.42) {
@@ -100,10 +100,30 @@ export class MapView {
       if (key !== this.cacheKey) {
         const CK = 0.42; if (!this.cache) { this.cache = document.createElement('canvas'); this.cache.width = Math.ceil(this.M.W * CK); this.cache.height = Math.ceil(this.M.H * CK); }
         const cg = this.cache.getContext('2d'); cg.setTransform(1, 0, 0, 1, 0, 0); cg.clearRect(0, 0, this.cache.width, this.cache.height); cg.setTransform(CK, 0, 0, CK, 0, 0);
+        if (this.tex.mar) { cg.fillStyle = this.tex.mar; cg.fillRect(0, 0, M.W, M.H); }
         this.drawBase(cg, CK, S, vis); this.cacheKey = key;
       }
       g.drawImage(this.cache, 0, 0, M.W, M.H);
-    } else this.drawBase(g, k, S, vis);
+    } else {
+      // zoom aproximado: a camada estática é desenhada num bitmap do tamanho da tela (+ margem) e só é refeita
+      // quando a vista sai da margem, o zoom assenta num valor novo ou o estado do mapa muda
+      const mw = this.w * 0.3, mh = this.h * 0.3, d = this.dpr;
+      const [vx0, vy0] = this.toWorld(0, 0), [vx1, vy1] = this.toWorld(this.w, this.h);
+      const c = this.vc, inside = c && vx0 >= c.x0 && vy0 >= c.y0 && vx1 <= c.x1 && vy1 <= c.y1;
+      const zoomSettled = performance.now() - this.lastZoom > 160;
+      if (key !== this.vcKey || !inside && (zoomSettled || !c) || c.k !== k && zoomSettled) {
+        if (!this.vcCanvas) this.vcCanvas = document.createElement('canvas');
+        const cv = this.vcCanvas, W = Math.ceil((this.w + 2 * mw) * d), H = Math.ceil((this.h + 2 * mh) * d);
+        if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+        const cg = cv.getContext('2d'); cg.setTransform(1, 0, 0, 1, 0, 0); cg.clearRect(0, 0, W, H);
+        cg.setTransform(d * k, 0, 0, d * k, d * (this.ox + mw), d * (this.oy + mh));
+        if (this.tex.mar) { cg.fillStyle = this.tex.mar; cg.fillRect(0, 0, M.W, M.H); }
+        this.drawBase(cg, k, S, vis);
+        const [x0, y0] = this.toWorld(-mw, -mh), [x1, y1] = this.toWorld(this.w + mw, this.h + mh);
+        this.vc = { k, x0, y0, x1, y1 }; this.vcKey = key;
+      }
+      const v = this.vc; g.drawImage(this.vcCanvas, v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+    }
     // província selecionada / hover
     if (this.hover >= 0 && this.hover < M.provinces.length) { g.fillStyle = 'rgba(255,255,255,.12)'; g.fill(this.paths[this.hover], 'evenodd'); }
     if (this.selProv >= 0) { g.strokeStyle = '#f1c255'; g.lineWidth = 3 / k; g.stroke(this.paths[this.selProv]); }

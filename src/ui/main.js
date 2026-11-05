@@ -228,12 +228,14 @@ function setupInput() {
 }
 // dica ao passar o mouse: tropa (nome, unidades, situação) ou província (dono, pontos, moral se for sua)
 function tip(sx, sy, html) { let t = $('#tip'); if (!t) { t = document.createElement('div'); t.id = 'tip'; $('#app').appendChild(t); } if (!html) { t.style.display = 'none'; return; } if (t._h !== html) { t._h = html; t.innerHTML = html; } t.style.display = 'block'; const r = t.getBoundingClientRect(); t.style.left = Math.min(sx + 16, innerWidth - r.width - 8) + 'px'; t.style.top = Math.min(sy + 14, innerHeight - r.height - 8) + 'px'; }
+// nome exibido da tropa: o que o jogador deu, ou "Nª Divisão de <unidade principal>"
+function armyName(st) { if (st.name) return st.name; let top = null, b = -1; for (const [u, e] of Object.entries(st.units)) if (e.n * UNITS[u].hp > b) { b = e.n * UNITS[u].hp; top = u; } const un = UNITS[top]?.name || 'Tropa'; return st.no ? `${st.no}ª Divisão de ${un}` : un; }
 function hoverTip(sx, sy, n) {
   if (!S || win) return tip();
   const hid = view.hitStack(sx, sy); const P = S.opts.player;
   if (hid) { const st = S.stacks.find(s => s.id === hid); if (st) { const dom = stackDomain(st); const top = Object.keys(st.units)[0];
     const sit = st.nat !== P && !C.sharesMap?.(S, P, st.nat) && rel(S, P, st.nat) !== 'aliado' ? '' : dom === 'air' ? (st.mission ? 'Em missão' : 'Na base') : st.fighting ? 'Em combate' : st.path.length ? 'Em marcha → ' + M.nodes[st.path[st.path.length - 1]].name : 'Parada em ' + M.nodes[st.node].name;
-    return tip(sx, sy, `<div class="tt">${flagSVG(st.nat)} <b>${esc(st.name || UNITS[top].name)}</b></div><div class="small">${esc(nname(st.nat))} · ${stackCount(st)} unidades · vida ${Math.round(100 * stackHP(st).hp / stackHP(st).max)}%</div>${sit ? `<div class="small muted">${esc(sit)}</div>` : ''}`); } }
+    return tip(sx, sy, `<div class="tt">${flagSVG(st.nat)} <b>${esc(armyName(st))}</b></div><div class="small">${esc(nname(st.nat))} · ${stackCount(st)} unidades · vida ${Math.round(100 * stackHP(st).hp / stackHP(st).max)}%</div>${sit ? `<div class="small muted">${esc(sit)}</div>` : ''}`); } }
   if (n < 0 || n >= M.nL) return tip();
   const p = M.provinces[n], sp = S.provinces[n], own = sp.owner === P;
   tip(sx, sy, `<div class="tt">${flagSVG(sp.owner)} <b>${esc(p.name)}</b> <span class="muted small">${p.vp} pts</span></div><div class="small">${esc(nname(sp.owner))}${S.nations[sp.owner]?.capital === n ? ' · capital' : p.city ? ' · cidade' : ''} · ${TERRAIN[p.terrain].name}</div>${own ? `<div class="small muted">Moral ${Math.round(sp.morale)}%${sp.build ? ' · construindo ' + BUILDINGS[sp.build.type].name : ''}${sp.queue.length ? ' · produzindo ' + UNITS[sp.queue[0].u].name : ''}</div>` : ''}`);
@@ -360,7 +362,7 @@ function stackPanel(st) {
   const cls = own ? '' : hostile(S, P, st.nat) ? 'enemy' : 'foreign';
   const top = Object.keys(st.units).sort((a, b) => st.units[b].hp - st.units[a].hp)[0];
   const others = S.stacks.filter(o => o !== st && o.nat === P && stackDomain(o) === dom && (dom === 'air' ? !o.mission && !st.mission && o.base === st.base : o.node === st.node && o.prog === 0 && st.prog === 0));
-  return `${own ? '<button class="pside l" data-p="sstep" data-d="-1" title="Tropa anterior">‹</button><button class="pside r" data-p="sstep" data-d="1" title="Próxima tropa">›</button>' : ''}<div class="ph ${cls}">${flagSVG(st.nat)}<div class="t">${esc(st.name || (UNITS[top]?.name || 'Tropa') + ' · ' + (st.nat === 'reb' ? 'Rebeldes' : NATION_BY_ID[st.nat].adj))}</div>${relTag(st.nat)}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
+  return `${own ? '<button class="pside l" data-p="sstep" data-d="-1" title="Tropa anterior">‹</button><button class="pside r" data-p="sstep" data-d="1" title="Próxima tropa">›</button>' : ''}<div class="ph ${cls}">${flagSVG(st.nat)}<div class="t">${esc(armyName(st))}<span class="small muted" style="text-transform:none;letter-spacing:0"> · ${st.nat === 'reb' ? 'rebeldes' : NATION_BY_ID[st.nat].adj}</span></div>${relTag(st.nat)}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
   <div class="pb">
     <div style="width:150px;padding:0;position:relative"><div class="vign">${top ? unitHTML(top, st.nat, 'ic') : ''}<img src="${photoFor(UNIT_PHOTO[top] || 'infantaria', st.id)}" alt="" onerror="this.remove()"></div></div>
     <div style="min-width:170px"><div class="lbl">Pontos de vida</div><div class="row"><div class="bar grow"><i style="width:${f * 100}%;background:${f > .6 ? 'var(--good)' : f > .3 ? '#e2b84a' : 'var(--bad)'}"></i></div><b class="small">${Math.round(hp.hp)}/${Math.round(hp.max)}</b></div>
@@ -559,9 +561,14 @@ const WINS = {
   },
 
   exercitos(w) {
-    const P = S.opts.player; w.live = true; const list = S.stacks.filter(s => s.nat === P);
-    return frame({ title: 'Exércitos', cat: 'infantaria', wide: true, body: `<table class="t"><tr><th>Tropa</th><th>Unidades</th><th>Vida</th><th>Local</th><th>Situação</th></tr>${list.map(s => { const hp = stackHP(s); const dom = stackDomain(s); const loc = dom === 'air' ? M.nodes[s.base].name : M.nodes[s.node].name; const sit = dom === 'air' ? (s.mission ? s.mission.type === 'patrol' ? 'Patrulha' : s.mission.type === 'strike' ? 'Ataque' : 'Retornando' : 'Na base') : s.fighting ? 'Em combate' : s.path.length ? 'Em marcha → ' + M.nodes[s.path[s.path.length - 1]].name : 'Parado';
-      return `<tr class="click" data-act="selS" data-id="${s.id}"><td><b>${esc(s.name || UNITS[Object.keys(s.units)[0]].name)}</b></td><td>${Object.entries(s.units).map(([u, e]) => `<span class="chip" style="display:inline-flex">${UA(u)}${e.n}</span>`).join(' ')}</td><td>${Math.round(100 * hp.hp / hp.max)}%</td><td>${esc(loc)}</td><td class="small">${esc(sit)}</td></tr>`; }).join('')}</table>` });
+    const P = S.opts.player; w.live = true; w.sort = w.sort || 'n';
+    const info = s => { const hp = stackHP(s); const dom = stackDomain(s); const loc = dom === 'air' ? M.nodes[s.base].name : M.nodes[s.node].name; const sit = dom === 'air' ? (s.mission ? s.mission.type === 'patrol' ? 'Patrulha' : s.mission.type === 'strike' ? 'Ataque' : 'Retornando' : 'Na base') : s.fighting ? 'Em combate' : s.path.length ? 'Em marcha → ' + M.nodes[s.path[s.path.length - 1]].name : 'Parado'; return { hp, loc, sit, pw: stackPower(s), n: stackCount(s), spd: stackSpeed(S, s) }; };
+    const list = S.stacks.filter(s => s.nat === P && !s.dead).map(s => [s, info(s)]);
+    const key = { n: ([s, i]) => -i.n, nome: ([s]) => armyName(s), forca: ([s, i]) => -i.pw, vida: ([s, i]) => i.hp.hp / i.hp.max, vel: ([s, i]) => -i.spd, local: ([s, i]) => i.loc, sit: ([s, i]) => i.sit }[w.sort];
+    list.sort((a, b) => { const x = key(a), y = key(b); return (typeof x === 'string' ? x.localeCompare(y) : x - y) || a[0].id - b[0].id; });
+    const th = (k, t) => `<th class="click" data-act="asort" data-k="${k}">${t}${w.sort === k ? ' ▾' : ''}</th>`;
+    return frame({ title: 'Exércitos', cat: 'infantaria', wide: true, body: `<table class="t"><tr>${th('nome', 'Tropa')}${th('n', 'Unidades')}${th('forca', 'Força')}${th('vida', 'Vida')}${th('vel', 'Velocidade')}${th('local', 'Local')}${th('sit', 'Situação')}</tr>${list.map(([s, i]) =>
+      `<tr class="click" data-act="selS" data-id="${s.id}"><td><b>${esc(armyName(s))}</b></td><td>${Object.entries(s.units).map(([u, e]) => `<span class="chip" style="display:inline-flex">${UA(u)}${e.n}</span>`).join(' ')}</td><td>${Math.round(i.pw)}</td><td><div class="bar" style="width:70px;display:inline-block"><i style="width:${100 * i.hp.hp / i.hp.max}%;background:${i.hp.hp / i.hp.max > .6 ? 'var(--good)' : '#e2b84a'}"></i></div> ${Math.round(100 * i.hp.hp / i.hp.max)}%</td><td>${i.spd} km/h</td><td>${esc(i.loc)}</td><td class="small">${esc(i.sit)}</td></tr>`).join('')}</table>` });
   },
   eventos() {
     const ev = S.events.slice().reverse().slice(0, 120);
@@ -621,6 +628,7 @@ const ACTS = {
   spy: (b, w) => { const r = C.spy(S, M, S.opts.player, w.target, b.dataset.k); toast(r.msg, r.ok ? 'info' : 'alerta'); },
   goto: (b) => { const i = +b.dataset.i; view.centerOn(M.nodes[i].x, M.nodes[i].y, Math.max(view.k, 0.5)); selProv = i; selStack = null; closeWin(); },
   provNav: (b, w) => provStep(+b.dataset.d),
+  asort: (b, w) => { w.sort = b.dataset.k; },
   dq: (b, w) => { w.q = b.value; },
   drel: (b, w) => { w.rel = b.value; },
   dviz: (b, w) => { w.viz = !w.viz; },

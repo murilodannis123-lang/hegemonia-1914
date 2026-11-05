@@ -154,6 +154,27 @@ export class MapView {
       const b = M.nodes[sel.base]; let r = 1e9; for (const u of Object.keys(sel.units)) r = Math.min(r, UNITS[u].range || 1e9);
       g.setLineDash([8 / k, 6 / k]); g.strokeStyle = 'rgba(255,240,200,.7)'; g.lineWidth = 1.5 / k; g.beginPath(); g.arc(b.x, b.y, r, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
     }
+    // névoa: tudo fora do alcance de visão escurece; em volta das suas tropas e províncias fica um círculo claro de borda suave
+    if (S.opts.fog && this.mode === 'padrao' && vis && vis.eyes) {
+      // camada em meia resolução e só refeita quando a vista, a hora ou o que se vê muda (é borrada mesmo)
+      const W = Math.ceil(this.c.width / 2), H = Math.ceil(this.c.height / 2); if (!this.fogC) this.fogC = document.createElement('canvas');
+      const fc = this.fogC; if (fc.width !== W || fc.height !== H) { fc.width = W; fc.height = H; this.fogKey = null; }
+      const fkey = this.ox.toFixed(1) + '|' + this.oy.toFixed(1) + '|' + k.toFixed(4) + '|' + S.hour + '|' + this.groupKey;
+      if (fkey !== this.fogKey) { this.fogKey = fkey;
+      const fg = fc.getContext('2d'); fg.setTransform(1, 0, 0, 1, 0, 0); fg.globalCompositeOperation = 'source-over'; fg.clearRect(0, 0, W, H);
+      fg.fillStyle = 'rgba(28,30,32,.34)'; fg.fillRect(0, 0, W, H); fg.globalCompositeOperation = 'destination-out';
+      const d = this.dpr / 2;
+      // províncias que você vê ficam totalmente claras; os círculos clareiam além delas (alcance das tropas)
+      fg.save(); fg.setTransform(d * k, 0, 0, d * k, d * this.ox, d * this.oy); fg.fillStyle = '#000'; fg.fill(this.seenPath, 'evenodd'); fg.restore();
+      for (const e of vis.eyes) {
+        const [ex, ey] = this.toScreen(e.x, e.y), r = e.r * k * d * 1.15, x = ex * d, y = ey * d;
+        if (x + r < 0 || y + r < 0 || x - r > W || y - r > H) continue;
+        const gr = fg.createRadialGradient(x, y, r * 0.55, x, y, r); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        fg.fillStyle = gr; fg.beginPath(); fg.arc(x, y, r, 0, Math.PI * 2); fg.fill();
+      }
+      }
+      g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(fc, 0, 0, this.c.width, this.c.height); g.restore();
+    }
     this.drawLabels(S, vis);
     if (!this.noStacks) this.drawStacks(S, vis, frac, sel);
     // prévia de rota
@@ -206,17 +227,17 @@ export class MapView {
     g.restore();
   }
   buildGroups(S, vis, key) {
-    const M = this.M, P = S.opts.player; const groups = new Map(); const fog = new Path2D();
+    const M = this.M, P = S.opts.player; const groups = new Map(); const fog = new Path2D(), seen = new Path2D();
     for (let i = 0; i < M.provinces.length; i++) {
       const c = this.provColor(S, i, vis); if (!groups.has(c)) groups.set(c, new Path2D()); groups.get(c).addPath(this.paths[i]);
-      if (vis && !vis.nodes.has(i)) fog.addPath(this.paths[i]);
+      if (vis && !vis.nodes.has(i)) fog.addPath(this.paths[i]); else seen.addPath(this.paths[i]);
     }
     const nb = new Path2D(), mb = new Path2D();
     for (const e of this.edges) { const a = S.provinces[e.p1].owner, b = S.provinces[e.p2].owner; if (a !== b) { nb.moveTo(e.x1, e.y1); nb.lineTo(e.x2, e.y2); if (a === P || b === P) { mb.moveTo(e.x1, e.y1); mb.lineTo(e.x2, e.y2); } } }
     const rails = new Path2D(); let nr = 0;
     for (const [a, b] of this.roadEdges) if (S.provinces[a].b.ferrovia && S.provinces[b].b.ferrovia) { const A = M.nodes[a], B = M.nodes[b]; rails.moveTo(A.x, A.y); rails.lineTo(B.x, B.y); nr++; }
     this.rails = nr ? rails : null;
-    this.groups = groups; this.fogPath = fog; this.natBorder = nb; this.myBorder = mb; this.groupKey = key;
+    this.groups = groups; this.fogPath = fog; this.seenPath = seen; this.natBorder = nb; this.myBorder = mb; this.groupKey = key;
   }
   // mapa limpo: cores chapadas, linhas finas claras entre províncias, borda de nação discreta, mar liso com brilho na costa
   drawBase(g, k, S, vis) {
@@ -231,7 +252,6 @@ export class MapView {
     g.drawImage(this.halo, 0, 0, M.W, M.H);
     const fog = S.opts.fog && this.mode === 'padrao';
     for (const [c, path] of this.groups) { g.fillStyle = c; g.fill(path, 'evenodd'); }
-    if (fog) { g.fillStyle = 'rgba(40,40,40,.14)'; g.fill(this.fogPath, 'evenodd'); }
     g.strokeStyle = this.far ? 'rgba(255,255,255,.28)' : 'rgba(255,255,255,.55)'; g.lineWidth = 0.9 / k; g.stroke(this.allLand);
     if (this.rails && !this.far) { g.strokeStyle = 'rgba(60,50,40,.55)'; g.lineWidth = 1.2 / k; g.setLineDash([3 / k, 3 / k]); g.stroke(this.rails); g.setLineDash([]); }
     if (!this.far) this.drawStamps(g, k, g === this.g);

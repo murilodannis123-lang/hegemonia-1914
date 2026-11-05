@@ -62,6 +62,7 @@ export function newGame(M, opts) {
 
 export function addStack(S, M, nat, node, units) {
   const st = { id: S.nextStack++, nat, units: {}, node, path: [], prog: 0, stance: 'agressivo', mission: null };
+  const nn = S.nations[nat]; if (nn) st.no = nn.armyNo = (nn.armyNo || 0) + 1; // número da divisão (1ª, 2ª...) por país
   for (const [u, n] of Object.entries(units)) if (n > 0) st.units[u] = { n, hp: n * UNITS_HP(u) };
   const nd = M.nodes[node]; st.x = nd.x; st.y = nd.y;
   S.stacks.push(st);

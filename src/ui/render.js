@@ -94,15 +94,15 @@ export class MapView {
     if (this.mode === 'politico') return o === 'reb' ? '#6b6258' : NATION_BY_ID[o].color;
     if (this.mode === 'recursos') return RES_COLOR[this.M.provinces[i].res];
     if (this.mode === 'moral') { if (o !== P) return '#a9a190'; const m = sp.morale / 100; return `hsl(${Math.round(m * 110)},45%,${42 + m * 18}%)`; }
-    if (o === P) return '#e9ecdc';
+    if (o === P) return '#dfe9d3';
     if (o === 'reb') return '#7a6d60';
     const r = rel(S, P, o);
-    if (r === 'guerra') return '#c98e82';
+    if (r === 'guerra') return '#cf9a8f';
     // zoom afastado: cada nação com a sua cor (suavizada), como num mapa político
     if (this.far) return mix(NATION_BY_ID[o].color, '#e6dcc4', 0.45);
     if (r === 'aliado') return '#a9bfd2';
     if (r === 'passagem') return '#c6c7a6';
-    return '#cbc1a6';
+    return '#c7c3b6';
   }
 
   draw(S, vis, frac = 0) {
@@ -178,14 +178,14 @@ export class MapView {
     let x0 = -1e9, y0 = -1e9, x1 = 1e9, y1 = 1e9;
     if (clipView) { [x0, y0] = this.toWorld(-60, -60); [x1, y1] = this.toWorld(this.w + 60, this.h + 60); }
     const SZ = { montanha: 44, colina: 34, floresta: 36, deserto: 36 };
-    for (const [t, x, y, s0] of this.glyphs) {
+    for (const [t, x, y, s0] of (k > 1.2 ? this.glyphs : [])) { // terreno só bem de perto
       if (x < x0 || x > x1 || y < y0 || y > y1) continue; const im = this.stamp[t]; if (!im || !im.complete || !im.naturalWidth) continue;
       const w = SZ[t] * s0, h = w * im.naturalHeight / im.naturalWidth; g.drawImage(im, x - w / 2, y - h * 0.8, w, h);
     }
     for (const p of this.M.provinces) {
       if (!p.city || p.x < x0 || p.x > x1 || p.y < y0 || p.y > y1) continue;
       const im = this.stamp[p.capital ? 'capital' : p.pop > 900000 ? 'cidade' : 'vila']; if (!im || !im.complete || !im.naturalWidth) continue;
-      const w = p.capital ? 46 : p.pop > 900000 ? 38 : 32, h = w * im.naturalHeight / im.naturalWidth; g.drawImage(im, p.x + 18, p.y - h * 0.7, w, h);
+      const w = (p.capital ? 26 : p.pop > 900000 ? 22 : 18) / Math.max(k, 0.45), h = w * im.naturalHeight / im.naturalWidth; g.drawImage(im, p.x + 10 / Math.max(k, 0.45), p.y - h * 0.75, w, h);
     }
   }
   drawTerrain(g, k) {
@@ -218,52 +218,26 @@ export class MapView {
     this.rails = nr ? rails : null;
     this.groups = groups; this.fogPath = fog; this.natBorder = nb; this.myBorder = mb; this.groupKey = key;
   }
+  // mapa limpo: cores chapadas, linhas finas claras entre províncias, borda de nação discreta, mar liso com brilho na costa
   drawBase(g, k, S, vis) {
-    const M = this.M, P = S.opts.player;
-    // bordas do mapa
-    g.strokeStyle = 'rgba(20,30,30,.5)'; g.lineWidth = 3 / k; g.strokeRect(0, 0, M.W, M.H);
-    // halo costeiro
-    // halo costeiro é estático: desenhado uma vez num bitmap e reaproveitado
+    const M = this.M;
     if (!this.halo) {
       const HK = 0.42, c = document.createElement('canvas'); c.width = Math.ceil(M.W * HK); c.height = Math.ceil(M.H * HK);
       const hg = c.getContext('2d'); hg.setTransform(HK, 0, 0, HK, 0, 0); hg.lineJoin = 'round';
-      // ondas no mar (traços curtos), a terra cobre depois
-      let sd = 5; const r = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
-      hg.strokeStyle = 'rgba(230,245,245,.16)'; hg.lineWidth = 1.6 / HK; hg.lineCap = 'round';
-      for (let i = 0; i < 2600; i++) { const x = r() * M.W, y = r() * M.H, w = 10 + r() * 16; hg.beginPath(); hg.moveTo(x - w, y); hg.quadraticCurveTo(x, y - w * 0.35, x + w, y); hg.stroke(); }
-      hg.strokeStyle = 'rgba(210,230,225,.22)'; hg.lineWidth = 9 / HK; hg.stroke(this.allLand);
-      hg.strokeStyle = 'rgba(210,230,225,.18)'; hg.lineWidth = 4 / HK; hg.stroke(this.allLand);
+      for (const [w, a] of [[46, .05], [28, .07], [14, .1]]) { hg.strokeStyle = `rgba(150,205,215,${a})`; hg.lineWidth = w / HK; hg.stroke(this.allLand); }
       this.halo = c;
     }
+    g.fillStyle = '#2f5d69'; g.fillRect(0, 0, M.W, M.H);
     g.drawImage(this.halo, 0, 0, M.W, M.H);
-    // províncias
     const fog = S.opts.fog && this.mode === 'padrao';
     for (const [c, path] of this.groups) { g.fillStyle = c; g.fill(path, 'evenodd'); }
-    // textura de aquarela
-    g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = this.tex.papel ? 0.85 : 0.32; g.fillStyle = this.tex.papel || this.noise; g.fill(this.allLand, 'evenodd'); g.restore();
-    // sombra interna da costa (estática)
-    if (!this.coastShade) {
-      const HK = 0.42, c = document.createElement('canvas'); c.width = Math.ceil(M.W * HK); c.height = Math.ceil(M.H * HK);
-      const cg = c.getContext('2d'); cg.setTransform(HK, 0, 0, HK, 0, 0); cg.save(); cg.clip(this.allLand, 'evenodd'); cg.lineJoin = 'round';
-      cg.strokeStyle = 'rgba(90,65,40,.16)'; cg.lineWidth = 16 / HK; cg.stroke(this.allLand); cg.strokeStyle = 'rgba(90,65,40,.18)'; cg.lineWidth = 6 / HK; cg.stroke(this.allLand); cg.restore();
-      this.coastShade = c;
-    }
-    g.drawImage(this.coastShade, 0, 0, M.W, M.H);
-    // névoa
-    if (fog) { g.fillStyle = 'rgba(45,40,30,.17)'; g.fill(this.fogPath, 'evenodd'); }
-    // linhas de província
-    g.strokeStyle = this.far ? 'rgba(70,55,40,.16)' : 'rgba(70,55,40,.35)'; g.lineWidth = 0.8 / k; g.stroke(this.allLand);
-    // estradas (as tropas andam por elas) e ferrovias
-    if (!this.far) { g.lineCap = 'round'; g.strokeStyle = 'rgba(115,88,55,.5)'; g.lineWidth = 2.6 / k; g.stroke(this.roads); }
-    if (this.rails && !this.far) { g.strokeStyle = 'rgba(45,35,28,.85)'; g.lineWidth = 1.5 / k; g.stroke(this.rails); g.setLineDash([1.2 / k, 4.5 / k]); g.lineCap = 'butt'; g.lineWidth = 5 / k; g.stroke(this.rails); g.setLineDash([]); }
-    // desenhos de terreno
+    if (fog) { g.fillStyle = 'rgba(40,40,40,.14)'; g.fill(this.fogPath, 'evenodd'); }
+    g.strokeStyle = this.far ? 'rgba(255,255,255,.28)' : 'rgba(255,255,255,.55)'; g.lineWidth = 0.9 / k; g.stroke(this.allLand);
+    if (this.rails && !this.far) { g.strokeStyle = 'rgba(60,50,40,.55)'; g.lineWidth = 1.2 / k; g.setLineDash([3 / k, 3 / k]); g.stroke(this.rails); g.setLineDash([]); }
     if (!this.far) this.drawStamps(g, k, g === this.g);
-    // fronteiras de nação
-    g.strokeStyle = 'rgba(250,245,232,.8)'; g.lineWidth = 5 / k; g.stroke(this.natBorder);
-    g.strokeStyle = 'rgba(45,32,20,.9)'; g.lineWidth = 2.2 / k; g.stroke(this.natBorder);
-    g.strokeStyle = 'rgba(55,105,45,.95)'; g.lineWidth = 3 / k; g.stroke(this.myBorder);
-    // costa
-    g.strokeStyle = 'rgba(40,50,45,.6)'; g.lineWidth = 1 / k; g.stroke(this.allLand);
+    g.strokeStyle = 'rgba(55,50,45,.75)'; g.lineWidth = 1.8 / k; g.stroke(this.natBorder);
+    g.strokeStyle = 'rgba(60,110,50,.9)'; g.lineWidth = 2.4 / k; g.stroke(this.myBorder);
+    g.strokeStyle = 'rgba(30,45,50,.55)'; g.lineWidth = 1 / k; g.stroke(this.allLand);
   }
   drawLabels(S, vis) {
     const g = this.g, M = this.M, k = this.k, P = S.opts.player;
@@ -311,11 +285,11 @@ export class MapView {
         const nd = M.nodes[p.id];
         g.fillStyle = p.city ? 'rgba(40,30,20,.85)' : 'rgba(40,30,20,.55)';
         g.beginPath(); g.arc(nd.x, nd.y, (p.city ? 3 : 2) * sx, 0, Math.PI * 2); g.fill();
-        if (k > 0.55 || p.city) { const ly = nd.y - 66 * sx; g.fillStyle = 'rgba(35,28,20,.8)'; g.fillText(p.name, nd.x, ly);
+        if (k > 0.55 || p.city) { const ly = nd.y + 14 * sx; g.fillStyle = 'rgba(35,28,20,.8)'; g.fillText(p.name, nd.x, ly);
           // pontos de vitória da província (selo ao lado do nome)
-          const bx = nd.x + g.measureText(p.name).width / 2 + 9 * sx, r = 6.5 * sx;
-          g.fillStyle = p.vp >= 5 ? '#b8902c' : p.vp >= 2 ? '#7a5a2a' : 'rgba(70,58,40,.75)'; g.beginPath(); g.arc(bx, ly, r, 0, Math.PI * 2); g.fill();
-          g.fillStyle = '#f6ecd2'; g.font = `700 ${9 * sx}px Oswald, sans-serif`; g.fillText(p.vp, bx, ly + 0.5 * sx); g.font = `${10.5 * sx}px "Source Sans 3", sans-serif`; }
+          if (p.vp >= 2) { const bx = nd.x + g.measureText(p.name).width / 2 + 9 * sx, r = 6.5 * sx;
+          g.fillStyle = p.vp >= 5 ? '#b8902c' : '#7a5a2a'; g.beginPath(); g.arc(bx, ly, r, 0, Math.PI * 2); g.fill();
+          g.fillStyle = '#f6ecd2'; g.font = `700 ${9 * sx}px Oswald, sans-serif`; g.fillText(p.vp, bx, ly + 0.5 * sx); g.font = `${10.5 * sx}px "Source Sans 3", sans-serif`; } }
         if (k > 0.5) { const ri = this.resImg[p.res]; if (ri && ri.complete && ri.naturalWidth) { const z = (p.double ? 17 : 13) * sx; g.drawImage(ri, nd.x + 16 * sx, nd.y + 8 * sx, z, z); if (p.double) g.drawImage(ri, nd.x + 26 * sx, nd.y + 8 * sx, z, z); } }
       }
     }
@@ -359,7 +333,7 @@ export class MapView {
         slots.set(fk, { n: stackCount(st), st, x: p.x, y: p.y }); continue;
       }
       const n = slots.get(key) || 0; slots.set(key, n + 1);
-      const ox = n * (this.k < 0.6 ? 17 : 14) * sx, oy = this.k < 0.6 ? 0 : -n * 6 * sx;
+      const ox = n * 20 * sx, oy = 0;
       if (dom === 'air' && st.mission && st.mission.type === 'patrol' && st.nat === P) { g.strokeStyle = 'rgba(255,255,255,.35)'; g.setLineDash([4 * sx, 4 * sx]); g.beginPath(); g.arc(st.mission.x, st.mission.y, 70, 0, Math.PI * 2); g.stroke(); g.setLineDash([]); }
       this.drawToken(S, st, p.x + ox, p.y + oy, st.id === this.sel);
       const [scx, scy] = this.toScreen(p.x + ox, p.y + oy); this.hits.push({ id: st.id, x: scx, y: scy });
@@ -398,36 +372,32 @@ export class MapView {
     if (st.fighting) { g.fillStyle = '#e0573e'; g.beginPath(); g.arc(w / 2, 0, 2.6 * sx, 0, Math.PI * 2); g.fill(); }
     g.restore();
   }
+  // tropa no mapa: figura pequena (tamanho fixo na tela) com uma etiqueta do país e o total em cima
   drawToken(S, st, x, y, selected) {
-    if (this.k < 0.6) return this.drawShield(S, st, x, y, selected);
-    const g = this.g, sx = 1 / this.k, P = S.opts.player;
-    const s = sx * Math.max(0.8, Math.min(1.3, this.k * 2.2));
+    const g = this.g, P = S.opts.player, s = 1 / this.k * (this.k < 0.45 ? 0.85 : 1);
     const dom = stackDomain(st);
     let top = null, best = -1; for (const [u, e] of Object.entries(st.units)) { const v = e.n * UNITS[u].hp; if (v > best) { best = v; top = u; } }
     const embarked = dom === 'land' && (!this.M.isLand(st.node) || (st.prog > 0 && st.path.length && !this.M.isLand(st.path[0])));
     const icon = embarked ? 'transporte' : top;
     const r = st.nat === P ? 'self' : rel(S, P, st.nat);
-    const rim = r === 'self' ? '#e8d9a8' : r === 'guerra' ? '#e0573e' : r === 'aliado' ? '#7fb3e6' : '#b8ad92';
+    const rim = selected ? '#ffd35a' : r === 'self' ? '#f4ecd2' : r === 'guerra' ? '#e0573e' : r === 'aliado' ? '#7fb3e6' : '#2b241d';
     const nc = st.nat === 'reb' ? '#3c3530' : NATION_BY_ID[st.nat].color;
     g.save(); g.translate(x, y);
-    // sombra e destaque
-    g.fillStyle = selected ? 'rgba(255,211,90,.55)' : 'rgba(0,0,0,.32)'; g.beginPath(); g.ellipse(0, -2 * s, (selected ? 24 : 19) * s, (selected ? 8 : 6) * s, 0, 0, Math.PI * 2); g.fill();
-    // figura
-    const img = this.art(icon, st.nat === 'reb' ? 'xx' : st.nat);
-    if (img.complete && img.naturalWidth) { const bw = 58 * s, bh = 46 * s, f = Math.min(bw / img.naturalWidth, bh / img.naturalHeight); const w = img.naturalWidth * f, h = img.naturalHeight * f; g.drawImage(img, -w / 2, -3 * s - h, w, h); }
-    // placa com número
-    const n = stackCount(st); const label = n > 999 ? '999+' : String(n);
-    g.font = `600 ${10 * s}px Oswald, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    const tw = Math.max(16 * s, g.measureText(label).width + 10 * s);
-    g.fillStyle = '#1f1a15'; g.strokeStyle = selected ? '#ffd35a' : rim; g.lineWidth = (selected ? 2.4 : 1.4) * s;
-    g.beginPath(); g.roundRect(-tw / 2, -3 * s, tw, 12 * s, 3 * s); g.fill(); g.stroke();
-    g.fillStyle = nc; g.fillRect(-tw / 2 + 1.5 * s, -1.5 * s, 3 * s, 9 * s);
-    g.fillStyle = '#f6efe0'; g.fillText(label, 1.5 * s, 3.3 * s);
-    // vida
+    if (selected) { g.fillStyle = 'rgba(255,211,90,.5)'; g.beginPath(); g.ellipse(0, -1 * s, 13 * s, 4.5 * s, 0, 0, Math.PI * 2); g.fill(); }
+    g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(0, -1 * s, 8 * s, 2.6 * s, 0, 0, Math.PI * 2); g.fill();
+    const img = this.art(icon, st.nat === 'reb' ? 'xx' : st.nat); let fh = 22 * s;
+    if (img.complete && img.naturalWidth) { const bw = (dom === 'land' && !embarked ? 22 : 34) * s, bh = 22 * s, f = Math.min(bw / img.naturalWidth, bh / img.naturalHeight); const w = img.naturalWidth * f; fh = img.naturalHeight * f; g.drawImage(img, -w / 2, -1 * s - fh, w, fh); }
+    // etiqueta: faixa da cor do país + número, borda pela relação
+    const n = stackCount(st), label = n > 999 ? '1k+' : String(n);
+    g.font = `600 ${8.5 * s}px Oswald, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const tw = Math.max(15 * s, g.measureText(label).width + 9 * s), ty = -fh - 13 * s;
+    g.fillStyle = '#f4efe2'; g.strokeStyle = rim === '#f4ecd2' ? '#2b241d' : rim; g.lineWidth = (selected ? 2 : 1.1) * s;
+    g.beginPath(); g.roundRect(-tw / 2, ty, tw, 11 * s, 2 * s); g.fill(); g.stroke();
+    g.fillStyle = nc; g.fillRect(-tw / 2 + 1 * s, ty + 1 * s, 3 * s, 9 * s);
+    g.fillStyle = '#1c1814'; g.fillText(label, 1.5 * s, ty + 5.7 * s);
     const hp = stackHP(st); const f = hp.max ? hp.hp / hp.max : 0;
-    g.fillStyle = '#111'; g.fillRect(-tw / 2, 10 * s, tw, 2.6 * s);
-    g.fillStyle = f > 0.6 ? '#7cc26a' : f > 0.3 ? '#e2b84a' : '#d9533c'; g.fillRect(-tw / 2, 10 * s, tw * f, 2.6 * s);
-    if (st.fighting) { g.fillStyle = '#e0573e'; g.beginPath(); g.arc(tw / 2 + 3 * s, -1 * s, 3.5 * s, 0, Math.PI * 2); g.fill(); }
+    if (f < 0.999) { g.fillStyle = '#111'; g.fillRect(-tw / 2, ty + 11.5 * s, tw, 2 * s); g.fillStyle = f > 0.6 ? '#7cc26a' : f > 0.3 ? '#e2b84a' : '#d9533c'; g.fillRect(-tw / 2, ty + 11.5 * s, tw * f, 2 * s); }
+    if (st.fighting) { g.fillStyle = '#e0573e'; g.beginPath(); g.arc(tw / 2 + 2 * s, ty + 1 * s, 2.8 * s, 0, Math.PI * 2); g.fill(); }
     g.restore();
   }
   // clique: pilha mais próxima em raio de 20px

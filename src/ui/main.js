@@ -101,6 +101,8 @@ function loadSlot(slot) { try { const d = JSON.parse(localStorage.getItem(SLOT(s
 function slotInfo(slot) { const d = loadSlot(slot); if (!d) return null; return { t: d.t, nat: d.S.opts.player, day: Math.floor(d.S.hour / 24) + 1 }; }
 function startGame(state) {
   setScenario(M, state.opts.scenario || LEGACY_SCENARIO); view.natCenters = null;
+  // partidas antigas: numera as divisões que ainda não têm número
+  for (const st of [...state.stacks].sort((x, y) => x.id - y.id)) if (!st.no && state.nations[st.nat]) { const n = state.nations[st.nat]; st.no = n.armyNo = (n.armyNo || 0) + 1; }
   S = state; selStack = null; selProv = -1; win = null; speed = 1; acc = 0; unread = 0;
   seenEvents = S.events.length ? S.events[S.events.length - 1].id : 0;
   vis = computeVision(S, M, S.opts.player);

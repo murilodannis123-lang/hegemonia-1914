@@ -359,7 +359,7 @@ export class MapView {
         slots.set(fk, { n: stackCount(st), st, x: p.x, y: p.y }); continue;
       }
       const n = slots.get(key) || 0; slots.set(key, n + 1);
-      const ox = n * 14 * sx, oy = -n * 6 * sx;
+      const ox = n * (this.k < 0.6 ? 17 : 14) * sx, oy = this.k < 0.6 ? 0 : -n * 6 * sx;
       if (dom === 'air' && st.mission && st.mission.type === 'patrol' && st.nat === P) { g.strokeStyle = 'rgba(255,255,255,.35)'; g.setLineDash([4 * sx, 4 * sx]); g.beginPath(); g.arc(st.mission.x, st.mission.y, 70, 0, Math.PI * 2); g.stroke(); g.setLineDash([]); }
       this.drawToken(S, st, p.x + ox, p.y + oy, st.id === this.sel);
       const [scx, scy] = this.toScreen(p.x + ox, p.y + oy); this.hits.push({ id: st.id, x: scx, y: scy });
@@ -380,7 +380,26 @@ export class MapView {
     g.fillStyle = '#f6efe0'; g.fillText(label, x, y + 0.5 * sx);
   }
   art(u, nat) { const k = UNIT_PNG.has(u) ? u : u + nat; let i = this.artImg[k]; if (!i) { i = new Image(); i.src = UNIT_PNG.has(u) ? unitPngUrl(u) : 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(unitArtSVG(u, nat, 'width="208" height="128"')); this.artImg[k] = i; } return i; }
+  // zoom médio: escudo pequeno na cor da nação com a silhueta da unidade principal e o total (desenho próprio)
+  drawShield(S, st, x, y, selected) {
+    const g = this.g, sx = 1 / this.k, P = S.opts.player;
+    let top = null, best = -1; for (const [u, e] of Object.entries(st.units)) { const v = e.n * UNITS[u].hp; if (v > best) { best = v; top = u; } }
+    const r = st.nat === P ? 'self' : rel(S, P, st.nat);
+    const rim = selected ? '#ffd35a' : r === 'self' ? '#f4ecd2' : r === 'guerra' ? '#e0573e' : r === 'aliado' ? '#7fb3e6' : '#2b241d';
+    const nc = st.nat === 'reb' ? '#3c3530' : NATION_BY_ID[st.nat].color;
+    const w = 15 * sx, h = 19 * sx, yy = y - h - 2 * sx;
+    g.save(); g.translate(x, yy);
+    const path = new Path2D(); path.moveTo(-w / 2, 0); path.lineTo(w / 2, 0); path.lineTo(w / 2, h * 0.55); path.quadraticCurveTo(w / 2, h * 0.85, 0, h); path.quadraticCurveTo(-w / 2, h * 0.85, -w / 2, h * 0.55); path.closePath();
+    g.fillStyle = 'rgba(0,0,0,.35)'; g.translate(1 * sx, 1.5 * sx); g.fill(path); g.translate(-1 * sx, -1.5 * sx);
+    g.fillStyle = mix(nc, '#1c1814', 0.35); g.fill(path); g.lineWidth = (selected ? 2.2 : 1.3) * sx; g.strokeStyle = rim; g.stroke(path);
+    const ic = this.unitImg[top]; if (ic && ic.complete && ic.naturalWidth) g.drawImage(ic, -w * 0.42, h * 0.08, w * 0.84, w * 0.5);
+    const n = stackCount(st), label = n > 999 ? '1k+' : String(n);
+    g.font = `600 ${8 * sx}px Oswald, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f6efe0'; g.fillText(label, 0, h * 0.68);
+    if (st.fighting) { g.fillStyle = '#e0573e'; g.beginPath(); g.arc(w / 2, 0, 2.6 * sx, 0, Math.PI * 2); g.fill(); }
+    g.restore();
+  }
   drawToken(S, st, x, y, selected) {
+    if (this.k < 0.6) return this.drawShield(S, st, x, y, selected);
     const g = this.g, sx = 1 / this.k, P = S.opts.player;
     const s = sx * Math.max(0.8, Math.min(1.3, this.k * 2.2));
     const dom = stackDomain(st);

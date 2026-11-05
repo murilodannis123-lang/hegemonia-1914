@@ -47,6 +47,14 @@ function battleSounds(t) {
   battleFlip ? sfx.cannon(v) : sfx.rifles(v);
 }
 
+// pílula no rodapé: dia atual e quanto falta para o próximo (o dia vira: economia, moral, jornal)
+function dayPill() {
+  let d = $('#daypill'); if (!d) { d = document.createElement('div'); d.id = 'daypill'; $('#app').appendChild(d); }
+  const h = S.hour % 24, mins = Math.round((24 - h - (speed ? acc / SPEEDS[speed] : 0)) * 60);
+  put(d, `${UI_ICON.calendario || ''}<b>Dia ${day(S)}</b><span>Próximo dia em: ${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}min de jogo</span>`);
+  d.classList.toggle('hidden', !$('#panel').classList.contains('hidden'));
+}
+
 // ================= inicialização
 async function boot() {
   const raw = await (await fetch('assets/map.json')).json();
@@ -70,7 +78,7 @@ function loop(t) {
   if (S && !$('#menu').innerHTML) {
     view.selProv = selProv; view.sel = selStack;
     try { view.draw(S, vis, speed ? acc / SPEEDS[speed] : 0); } catch (e) { if (!loop.warned) { console.error(e); loop.warned = true; } }
-    battleSounds(t);
+    battleSounds(t); dayPill();
     if (t - lastUi > 300) { lastUi = t; try { renderTop(); renderPanel(); } catch (e) { console.error(e); } }
     if (win && win.live && t - lastWin > 1000) { lastWin = t; renderWin(true); }
   }
@@ -254,6 +262,7 @@ function onTap(sx, sy) {
     // (botão Confirmar no painel ou tocar de novo no mesmo destino)
     const t = hit && S.stacks.find(s => s.id === hit);
     const attack = !!(t && t.nat !== S.opts.player && hostile(S, S.opts.player, t.nat));
+    if (orderMode === 'attack' && !attack) { toast('Modo ataque: toque numa tropa inimiga (ou escolha Mover).', 'alerta'); return; }
     let node; if (t && stackDomain(t) !== 'air' && !t.path.length && t.prog === 0) node = t.node; else { const [x, y] = view.toWorld(sx, sy); node = M.nodeAt(x, y); }
     if (node < 0) return;
     if (pending && pending.id === st.id && pending.node === node) return confirmOrder();
@@ -276,7 +285,7 @@ function planOrder(st, node, attackId) {
   view.preview = pts; previewKey = 'pending';
 }
 function confirmOrder() {
-  if (!pending) return; const P = S.opts.player, o = pending; clearPending();
+  if (!pending) return; const P = S.opts.player, o = pending; clearPending(); orderMode = 'move'; hint();
   const r = o.attack ? C.attack(S, M, P, o.id, o.attack) : C.move(S, M, P, o.id, o.node);
   if (r.ok) o.attack ? sfx.cannon(0.5) : sfx.march();
   toast(r.msg, r.ok ? 'info' : 'alerta');
@@ -301,8 +310,17 @@ function onKey(e) {
 }
 
 // ================= painel inferior
+// botões redondos sobre o painel quando uma tropa sua está selecionada: Mover / Atacar / Dividir
+let orderMode = 'move';
+function renderFab(st) {
+  let f = $('#fab'); if (!f) { f = document.createElement('div'); f.id = 'fab'; $('#app').appendChild(f); f.onclick = e => { const b = e.target.closest('[data-fab]'); if (!b) return; const k = b.dataset.fab; const s2 = S.stacks.find(o => o.id === selStack); if (!s2) return; if (k === 'split') return openWin('dividir', { id: s2.id }); orderMode = k; clearPending(); hint(k === 'attack' ? 'Toque numa tropa inimiga para atacar' : 'Toque no destino no mapa'); renderPanel(); }; }
+  const show = st && st.nat === S.opts.player && stackDomain(st) !== 'air' && !win;
+  if (!show) { f.classList.add('hidden'); return; }
+  put(f, `<button data-fab="move" class="${orderMode === 'move' ? 'on' : ''}" title="Mover">${UI_ICON.mover}<span>Mover</span></button><button data-fab="attack" class="atk ${orderMode === 'attack' ? 'on' : ''}" title="Atacar">${UI_ICON.alvo}<span>Atacar</span></button><button data-fab="split" title="Dividir" ${stackCount(st) < 2 ? 'disabled' : ''}>${UI_ICON.dividir}<span>Dividir</span></button>`);
+  f.classList.remove('hidden'); f.style.bottom = ($('#panel').offsetHeight + 16) + 'px';
+}
 function renderPanel() {
-  const el = $('#panel');
+  const el = $('#panel'); renderFab(S && selStack && S.stacks.find(s => s.id === selStack));
   if (!S) { el.classList.add('hidden'); return; }
   const st = selStack && S.stacks.find(s => s.id === selStack);
   if (st) { el.classList.remove('hidden'); put(el, stackPanel(st)); return; }
@@ -316,7 +334,7 @@ function provPanel(i) {
   const cls = own ? '' : hostile(S, P, sp.owner) ? 'enemy' : 'foreign';
   const garrison = S.stacks.filter(s => s.node === i && s.prog === 0 && stackDomain(s) !== 'sea' && (own || vis2));
   const blds = Object.entries(sp.b).map(([b, l]) => `<span class="chip" title="${BUILDINGS[b].name}">${BUILD_ICON[b]} ${BUILDINGS[b].max > 1 ? l : ''}</span>`).join('') || '<span class="muted small">Nenhum edifício</span>';
-  return `<div class="ph ${cls}">${own ? '<button class="pa" data-p="pstep" data-d="-1" title="Província anterior">‹</button>' : ''}${flagSVG(sp.owner)}<div class="t">${esc(p.name)}</div>${relTag(sp.owner)}${own ? '<button class="pa" data-p="pstep" data-d="1" title="Próxima província">›</button>' : ''}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
+  return `${own ? '<button class="pside l" data-p="pstep" data-d="-1" title="Província anterior">‹</button><button class="pside r" data-p="pstep" data-d="1" title="Próxima província">›</button>' : ''}<div class="ph ${cls}">${flagSVG(sp.owner)}<div class="t">${esc(p.name)}</div>${relTag(sp.owner)}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
   <div class="pb">
     <div class="pimg"><div class="vign"><img class="ic spr" src="assets/map/${S.nations[sp.owner]?.capital === i || p.capital ? 'capital' : p.city ? (p.pop > 900000 ? 'cidade' : 'vila') : ['montanha', 'floresta', 'colina', 'deserto'].includes(p.terrain) ? p.terrain : 'colina'}.png" alt=""></div></div>
     <div style="min-width:170px"><div class="lbl">Produção diária</div>
@@ -342,7 +360,7 @@ function stackPanel(st) {
   const cls = own ? '' : hostile(S, P, st.nat) ? 'enemy' : 'foreign';
   const top = Object.keys(st.units).sort((a, b) => st.units[b].hp - st.units[a].hp)[0];
   const others = S.stacks.filter(o => o !== st && o.nat === P && stackDomain(o) === dom && (dom === 'air' ? !o.mission && !st.mission && o.base === st.base : o.node === st.node && o.prog === 0 && st.prog === 0));
-  return `<div class="ph ${cls}">${own ? '<button class="pa" data-p="sstep" data-d="-1" title="Tropa anterior">‹</button>' : ''}${flagSVG(st.nat)}<div class="t">${esc(st.name || (UNITS[top]?.name || 'Tropa') + ' · ' + (st.nat === 'reb' ? 'Rebeldes' : NATION_BY_ID[st.nat].adj))}</div>${relTag(st.nat)}${own ? '<button class="pa" data-p="sstep" data-d="1" title="Próxima tropa">›</button>' : ''}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
+  return `${own ? '<button class="pside l" data-p="sstep" data-d="-1" title="Tropa anterior">‹</button><button class="pside r" data-p="sstep" data-d="1" title="Próxima tropa">›</button>' : ''}<div class="ph ${cls}">${flagSVG(st.nat)}<div class="t">${esc(st.name || (UNITS[top]?.name || 'Tropa') + ' · ' + (st.nat === 'reb' ? 'Rebeldes' : NATION_BY_ID[st.nat].adj))}</div>${relTag(st.nat)}<button class="x" data-p="close">${UI_ICON.fechar}</button></div>
   <div class="pb">
     <div style="width:150px;padding:0;position:relative"><div class="vign">${top ? unitHTML(top, st.nat, 'ic') : ''}<img src="${photoFor(UNIT_PHOTO[top] || 'infantaria', st.id)}" alt="" onerror="this.remove()"></div></div>
     <div style="min-width:170px"><div class="lbl">Pontos de vida</div><div class="row"><div class="bar grow"><i style="width:${f * 100}%;background:${f > .6 ? 'var(--good)' : f > .3 ? '#e2b84a' : 'var(--bad)'}"></i></div><b class="small">${Math.round(hp.hp)}/${Math.round(hp.max)}</b></div>
@@ -364,7 +382,7 @@ function stackPanel(st) {
 $('#panel').addEventListener('click', e => {
   const b = e.target.closest('[data-p]'); if (!b) return; const a = b.dataset.p, P = S.opts.player;
   const st = selStack && S.stacks.find(s => s.id === selStack);
-  if (a === 'close') { selStack = null; selProv = -1; clearPending(); }
+  if (a === 'close') { selStack = null; selProv = -1; clearPending(); orderMode = 'move'; hint(); }
   if (a === 'go') { confirmOrder(); renderPanel(); return; }
   if (a === 'nogo') { clearPending(); renderPanel(); return; }
   if (a === 'build') openWin('provincia', { prov: selProv, tab: 'edificios' });
@@ -398,8 +416,8 @@ function provStep(d, free) {
 function openWin(name, opts = {}) { win = { name, ...opts }; $('#modal').classList.remove('hidden'); renderWin(); }
 function closeWin() { win = null; $('#modal').classList.add('hidden'); put($('#modal'), ''); }
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-x]')) closeWin(); });
-function frame({ title, tabs, tab, body, wide, cat = 'trincheira', live, nav }) {
-  return `<div class="win ${wide ? 'wide' : ''}"><div class="wh" style="--banner:${banner(cat, title.length)}"><h2>${title}</h2>${nav || ''}<button class="x" data-x>${UI_ICON.fechar}</button>
+function frame({ title, tabs, tab, body, wide, cat = 'trincheira', live, nav, sides }) {
+  return `${sides ? `<button class="wside l" data-act="provNav" data-d="-1" title="Província anterior (←)">‹</button><button class="wside r" data-act="provNav" data-d="1" title="Próxima província (→)">›</button>` : ''}<div class="win ${wide ? 'wide' : ''}"><div class="wh" style="--banner:${banner(cat, title.length)}"><h2>${title}</h2>${nav || ''}<button class="x" data-x>${UI_ICON.fechar}</button>
     ${tabs ? `<div class="tabs">${tabs.map(([k, t]) => `<button data-tab="${k}" class="${k === tab ? 'on' : ''}">${t}</button>`).join('')}</div>` : '<div style="height:6px"></div>'}</div><div class="wb">${body}</div></div>`;
 }
 function renderWin(isLive) {
@@ -438,7 +456,7 @@ const WINS = {
       const canQ = !!sp.build && u.ok && (sp.bq || []).length < C.BUILD_QUEUE_MAX && planned < B.max;
       return `<div class="item ${u.ok ? '' : 'locked'}"><div class="art">${art(b, BUILD_PHOTO[b], b.length)}</div>
         <div><div class="nm">${B.name}</div><div class="lvl">${B.max > 1 ? `Nível atual ${cur} de ${B.max}` : cur ? 'Construído' : 'Não construído'}</div><div class="small muted">${B.desc}</div>${u.max ? '' : `<div class="costs" style="margin-top:4px">${Object.entries(cost).map(([r, v]) => res(r, v, n.res[r])).join('')}</div>`}</div>
-        <div class="tm">${u.max ? 'Nível máximo' : u.ok ? hrs(buildTime(S, i, b, lvl)) : `<span class="why">${u.why}</span>`}${u.ok && sp.morale < 90 ? `<div class="small muted">moral +${hrs(buildTime(S, i, b, lvl) - B.time * lvl / S.opts.prodSpeed)}</div>` : ''}</div>
+        <div class="tm">${u.max ? 'Nível máximo' : u.ok ? hrs(buildTime(S, i, b, lvl)) : `<span class="why">${u.why}</span>`}${u.ok && sp.morale < 90 ? `<div class="small neg">Moral: +${hrs(buildTime(S, i, b, lvl) - B.time * lvl / S.opts.prodSpeed)}</div>` : ''}</div>
         <div class="acts">${sp.build ? `<button class="btn" data-act="build" data-b="${b}" ${canQ ? '' : 'disabled'} title="Começa quando a construção atual terminar (paga na hora de começar)">+ Fila</button>` : `<button class="rbtn" data-act="build" data-b="${b}" ${can ? '' : 'disabled'} title="Construir">${UI_ICON.martelo}</button>`}</div></div>`;
     }).join('');
     else rows = UNIT_TABS[tab].map(u => {
@@ -450,7 +468,7 @@ const WINS = {
         <div class="tm">${un.ok ? hrs(t) : `<span class="why">${un.why}</span>`}</div>
         <div class="acts"><button class="rbtn" data-act="prod" data-u="${u}" ${can ? '' : 'disabled'} title="Produzir 1">${UI_ICON.capacete}</button><button class="rbtn" data-act="prod5" data-u="${u}" ${can ? '' : 'disabled'} title="Produzir 5">×5</button></div></div>`;
     }).join('');
-    return frame({ title: p.name + (S.nations[P].capital === i ? ' ★' : ''), nav, cat: tab === 'edificios' ? 'fabrica' : 'infantaria', tabs: [['edificios', 'Edifícios'], ['terra', 'Terra'], ['aereo', 'Aéreo'], ['naval', 'Naval']], tab, body: qbar + rows });
+    return frame({ title: p.name + (S.nations[P].capital === i ? ' ★' : ''), nav, sides: mine.length > 1, cat: tab === 'edificios' ? 'fabrica' : 'infantaria', tabs: [['edificios', 'Edifícios'], ['terra', 'Terra'], ['aereo', 'Aéreo'], ['naval', 'Naval']], tab, body: qbar + rows });
   },
   dividir(w) {
     const st = S.stacks.find(s => s.id === w.id); if (!st) return frame({ title: 'Dividir', body: '<div class="pad">Tropa não existe mais.</div>' });
@@ -485,7 +503,11 @@ const WINS = {
     const P = S.opts.player; w.live = true; const sc = scores(S, M);
     const props = S.proposals.filter(p => p.to === P);
     const pTxt = { mapa: 'quer compartilhar o mapa', paz: 'propõe a paz', passagem: 'pede direito de passagem', coligacao: 'convida para a coligação', entrar: 'quer entrar na sua coligação', alianca: 'propõe uma aliança' };
-    const nats = Object.values(S.nations).filter(n => n.alive && !n.rebel && n.id !== P).sort((a, b) => (sc[b.id] || 0) - (sc[a.id] || 0));
+    // vizinhas: nações com província encostada numa das suas
+    const nb = new Set(); S.provinces.forEach((sp, i) => { if (sp.owner === P) for (const e of M.adj[i]) if (e.to < M.nL && S.provinces[e.to].owner !== P) nb.add(S.provinces[e.to].owner); });
+    const q = (w.q || '').toLowerCase();
+    const nats = Object.values(S.nations).filter(n => n.alive && !n.rebel && n.id !== P && (!w.viz || nb.has(n.id)) && (!w.rel || rel(S, P, n.id) === w.rel) && (!q || nname(n.id).toLowerCase().includes(q))).sort((a, b) => (sc[b.id] || 0) - (sc[a.id] || 0));
+    const filt = `<div class="row" style="flex-wrap:wrap;gap:10px;margin-bottom:10px"><input type="text" id="dq" placeholder="Procurar país" value="${esc(w.q || '')}" data-chg="dq" style="width:170px"><select data-chg="drel"><option value="">Todas as relações</option>${[['guerra', 'Em guerra'], ['paz', 'Em paz'], ['passagem', 'Passagem'], ['aliado', 'Aliados']].map(([k, t]) => `<option value="${k}" ${w.rel === k ? 'selected' : ''}>${t}</option>`).join('')}</select><label class="row small" style="gap:6px;cursor:pointer"><input type="checkbox" data-act="dviz" ${w.viz ? 'checked' : ''}> Só vizinhos</label></div>`;
     const sel = w.nat && S.nations[w.nat] && w.nat !== P ? w.nat : null;
     let detail = '';
     if (sel) {
@@ -505,7 +527,7 @@ const WINS = {
         <div class="small muted" style="margin-top:8px">Visitas e presentes melhoram a relação. Com relação Amistosa ou um inimigo em comum, a nação aceita aliança. Aliados entram nas suas guerras.</div></div>`;
     }
     const body = `<div class="pad">${props.length ? `<div class="card" style="margin-bottom:12px"><div class="lbl">Propostas recebidas</div>${props.map(p => `<div class="row" style="padding:6px 0">${flagSVG(p.from)}<span class="grow"><b>${esc(nname(p.from))}</b> ${pTxt[p.type] || p.type}</span><button class="btn green" data-act="ans" data-id="${p.id}" data-y="1">Aceitar</button><button class="btn red" data-act="ans" data-id="${p.id}" data-y="0">Recusar</button></div>`).join('')}</div>` : ''}${detail}
-      <table class="t"><tr><th></th><th>Nação</th><th>Prov.</th><th>Pontos</th><th>Relação</th><th>Situação</th></tr>${nats.map(n => `<tr class="click" data-act="pick" data-n="${n.id}"><td>${flagSVG(n.id)}</td><td><b>${esc(nname(n.id))}</b></td><td>${S.provinces.filter(p => p.owner === n.id).length}</td><td>${sc[n.id] || 0}</td><td>${Math.round(n.opinion[P] || 0)} <span class="muted small">${C.relLabel(n.opinion[P] || 0)}</span></td><td>${relTag(n.id)}</td></tr>`).join('')}</table></div>`;
+      ${filt}<table class="t"><tr><th></th><th>Nação</th><th>Prov.</th><th>Pontos</th><th>Relação</th><th>Situação</th></tr>${nats.map(n => `<tr class="click" data-act="pick" data-n="${n.id}"><td>${flagSVG(n.id)}</td><td><b>${esc(nname(n.id))}</b></td><td>${S.provinces.filter(p => p.owner === n.id).length}</td><td>${sc[n.id] || 0}</td><td>${Math.round(n.opinion[P] || 0)} <span class="muted small">${C.relLabel(n.opinion[P] || 0)}</span></td><td>${relTag(n.id)}</td></tr>`).join('')}</table></div>`;
     return frame({ title: 'Diplomacia', cat: 'diplomacia', wide: true, body });
   },
   coligacoes(w) {
@@ -599,6 +621,9 @@ const ACTS = {
   spy: (b, w) => { const r = C.spy(S, M, S.opts.player, w.target, b.dataset.k); toast(r.msg, r.ok ? 'info' : 'alerta'); },
   goto: (b) => { const i = +b.dataset.i; view.centerOn(M.nodes[i].x, M.nodes[i].y, Math.max(view.k, 0.5)); selProv = i; selStack = null; closeWin(); },
   provNav: (b, w) => provStep(+b.dataset.d),
+  dq: (b, w) => { w.q = b.value; },
+  drel: (b, w) => { w.rel = b.value; },
+  dviz: (b, w) => { w.viz = !w.viz; },
   sndM: () => { setSound('music', !sound.music); renderSpeed(); },
   sndF: () => { setSound('sfx', !sound.sfx); renderSpeed(); },
   sndV: (b) => setSound('vol', +b.value),

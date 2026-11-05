@@ -321,3 +321,27 @@ img.ic.res { object-fit: contain; }
 
 .pimg { width: 130px; flex: none; position: relative; align-self: stretch; }
 @media (max-width:760px), (max-height:500px) { .pimg { display: none; } }
+
+/* setas nas pontas do painel de baixo */
+#panel:has(.pside) { padding: 0 38px; }
+.pside { position: absolute; top: 0; bottom: 0; width: 36px; z-index: 2; border: 0; background: linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,.15)); color: #efe5d0; font: 600 30px/1 Oswald, sans-serif; cursor: pointer; }
+.pside.l { left: 0; border-right: 1px solid var(--line); } .pside.r { right: 0; border-left: 1px solid var(--line); background: linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,.15)); }
+.pside:hover { background: rgba(208,138,60,.35); }
+/* botões redondos de ordem sobre o painel */
+#fab { position: absolute; left: 50%; transform: translateX(-50%); z-index: 19; display: flex; gap: 14px; }
+#fab.hidden { display: none; }
+#fab button { width: 52px; height: 52px; border-radius: 50%; border: 2px solid #d9cfba; background: radial-gradient(#3b352d, #1f1b17); color: #f2e9d6; display: grid; place-items: center; position: relative; box-shadow: 0 3px 10px rgba(0,0,0,.55); cursor: pointer; }
+#fab button .ic { width: 26px; height: 26px; }
+#fab button span { position: absolute; top: -24px; left: 50%; transform: translateX(-50%); font: 600 11px Oswald, sans-serif; letter-spacing: .06em; text-transform: uppercase; background: rgba(20,17,14,.85); padding: 2px 6px; border-radius: 4px; opacity: 0; pointer-events: none; transition: opacity .15s; white-space: nowrap; }
+#fab button:hover span, #fab button.on span { opacity: 1; }
+#fab button.on { border-color: #e7b46c; background: radial-gradient(#7a5426, #3a2814); }
+#fab button.atk.on { border-color: #e0573e; background: radial-gradient(#8e2e22, #3e1510); }
+#fab button:disabled { opacity: .4; }
+/* setas grandes ao lado da janela da província */
+.wside { position: fixed; top: 50%; transform: translateY(-50%); z-index: 41; width: 46px; height: 90px; border: 0; background: none; color: #f2e9d6; font: 300 70px/1 Oswald, sans-serif; text-shadow: 0 2px 8px #000; cursor: pointer; }
+.wside.l { left: max(6px, calc(50% - 510px)); } .wside.r { right: max(6px, calc(50% - 510px)); }
+.wside:hover { color: #e7b46c; }
+@media (max-width:760px), (max-height:500px) { .wside { display: none; } #panel:has(.pside) { padding: 0; } .pside { display: none; } }
+/* pílula do dia no rodapé */
+#daypill { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(8px + var(--safe-b)); z-index: 17; display: flex; align-items: center; gap: 8px; padding: 5px 12px; background: rgba(24,20,16,.88); border: 1px solid #000; box-shadow: 0 0 0 1px var(--line); border-radius: 4px; color: #efe5d0; font: 500 12px "Source Sans 3", sans-serif; pointer-events: none; }
+#daypill.hidden { display: none; } #daypill .ic { width: 16px; height: 16px; } #daypill b { font: 600 13px Oswald; }

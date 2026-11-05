@@ -276,7 +276,9 @@ export class MapView {
       const x = nd.x, y = nd.y + 26 * sx;
       if (k >= 0.4) { g.fillStyle = 'rgba(28,24,20,.82)'; g.fillRect(x - tw / 2 - 6 * sx, y - 8 * sx, tw + 12 * sx, 16 * sx);
         g.fillStyle = n.id === P ? '#cfe6b8' : '#efe6d2'; g.fillText(label, x, y + 0.5 * sx); }
-      const fi = flagImage(n.id); if (fi.complete && fi.naturalWidth) { g.save(); g.beginPath(); g.arc(x, y - 22 * sx, 9 * sx, 0, Math.PI * 2); g.closePath(); g.fillStyle = '#1c1814'; g.fill(); g.clip(); g.drawImage(fi, x - 13 * sx, y - 30.5 * sx, 26 * sx, 17 * sx); g.restore(); g.strokeStyle = '#1c1814'; g.lineWidth = 2 * sx; g.beginPath(); g.arc(x, y - 22 * sx, 9 * sx, 0, Math.PI * 2); g.stroke(); }
+      // bandeira redonda: em cima da capital no zoom afastado, ao lado da placa quando aproxima (não cobre as tropas)
+      const fx = k >= 0.4 ? x - tw / 2 - 15 * sx : x, fy = k >= 0.4 ? y : y - 22 * sx;
+      const fi = flagImage(n.id); if (fi.complete && fi.naturalWidth) { g.save(); g.beginPath(); g.arc(fx, fy, 9 * sx, 0, Math.PI * 2); g.closePath(); g.fillStyle = '#1c1814'; g.fill(); g.clip(); g.drawImage(fi, fx - 13 * sx, fy - 8.5 * sx, 26 * sx, 17 * sx); g.restore(); g.strokeStyle = '#1c1814'; g.lineWidth = 2 * sx; g.beginPath(); g.arc(fx, fy, 9 * sx, 0, Math.PI * 2); g.stroke(); }
     }
     // cidades e nomes de províncias
     if (k > 0.35) {
@@ -327,18 +329,24 @@ export class MapView {
         const [ax, ay] = pts[pts.length - 1], [bx, by] = pts[pts.length - 2]; const an = Math.atan2(ay - by, ax - bx), L = 11 * sx;
         g.fillStyle = col; g.strokeStyle = 'rgba(250,244,228,.85)'; g.lineWidth = 1.2 * sx; g.beginPath(); g.moveTo(ax, ay); g.lineTo(ax - L * Math.cos(an - 0.45), ay - L * Math.sin(an - 0.45)); g.lineTo(ax - L * Math.cos(an + 0.45), ay - L * Math.sin(an + 0.45)); g.closePath(); g.fill(); g.stroke();
       }
-      if (this.far) { // zoom afastado: um selo pequeno por nação e lugar, com o total de unidades
-        const fk = key[0] === 'n' ? key + st.nat : key, b = slots.get(fk);
-        if (b) { b.n += stackCount(st); continue; }
-        slots.set(fk, { n: stackCount(st), st, x: p.x, y: p.y }); continue;
-      }
-      const n = slots.get(key) || 0; slots.set(key, n + 1);
-      const ox = n * 20 * sx, oy = 0;
       if (dom === 'air' && st.mission && st.mission.type === 'patrol' && st.nat === P) { g.strokeStyle = 'rgba(255,255,255,.35)'; g.setLineDash([4 * sx, 4 * sx]); g.beginPath(); g.arc(st.mission.x, st.mission.y, 70, 0, Math.PI * 2); g.stroke(); g.setLineDash([]); }
-      this.drawToken(S, st, p.x + ox, p.y + oy, st.id === this.sel);
-      const [scx, scy] = this.toScreen(p.x + ox, p.y + oy); this.hits.push({ id: st.id, x: scx, y: scy });
+      // tropas paradas do mesmo país na mesma província viram UMA figura com o total (a maior é a que responde ao clique)
+      const gk = key[0] === 'n' ? key + st.nat + dom : key, grp = slots.get(gk);
+      if (grp) { grp.list.push(st); continue; }
+      slots.set(gk, { list: [st], x: p.x, y: p.y, node: key[0] === 'n' ? st.node : null });
     }
-    if (this.far) for (const b of slots.values()) { this.drawBadge(S, b.st, b.x, b.y, b.n, b.st.id === this.sel); const [scx, scy] = this.toScreen(b.x, b.y); this.hits.push({ id: b.st.id, x: scx, y: scy + 14 }); }
+    if (this.far) { for (const b of slots.values()) { const n = b.list.reduce((a, o) => a + stackCount(o), 0), rep = b.list.reduce((a, o) => stackCount(o) > stackCount(a) ? o : a); this.drawBadge(S, rep, b.x, b.y, n, b.list.some(o => o.id === this.sel)); const [scx, scy] = this.toScreen(b.x, b.y); this.hits.push({ id: b.list.some(o => o.id === this.sel) ? this.sel : rep.id, x: scx, y: scy + 14 }); } return; }
+    // nações diferentes no mesmo lugar ficam lado a lado
+    const per = new Map();
+    for (const b of slots.values()) {
+      const i = b.node == null ? 0 : (per.get(b.node) || 0); if (b.node != null) per.set(b.node, i + 1);
+      const ox = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 26 * sx;
+      const selIn = b.list.find(o => o.id === this.sel), rep = selIn || b.list.reduce((a, o) => stackCount(o) > stackCount(a) ? o : a);
+      let show = rep;
+      if (b.list.length > 1) { const units = {}; for (const o of b.list) for (const [u, e] of Object.entries(o.units)) { const t = units[u] || (units[u] = { n: 0, hp: 0 }); t.n += e.n; t.hp += e.hp; } show = { ...rep, units, fighting: b.list.some(o => o.fighting) }; }
+      this.drawToken(S, show, b.x + ox, b.y, !!selIn, b.list.length);
+      const [scx, scy] = this.toScreen(b.x + ox, b.y); this.hits.push({ id: rep.id, x: scx, y: scy, group: b.list.map(o => o.id) });
+    }
   }
   // selo compacto (zoom afastado): círculo na cor da nação com borda pela relação e o total de unidades
   drawBadge(S, st, x, y, n, selected) {
@@ -372,8 +380,16 @@ export class MapView {
     if (st.fighting) { g.fillStyle = '#e0573e'; g.beginPath(); g.arc(w / 2, 0, 2.6 * sx, 0, Math.PI * 2); g.fill(); }
     g.restore();
   }
+  // sombra projetada da figura: silhueta escura e borrada, feita uma vez por imagem
+  shadowOf(img) {
+    this.shadows = this.shadows || new Map(); let c = this.shadows.get(img); if (c) return c;
+    const W = img.naturalWidth, H = img.naturalHeight, pad = 8; c = document.createElement('canvas'); c.width = W + pad * 2; c.height = H + pad * 2;
+    const g = c.getContext('2d'); try { g.filter = 'blur(3px)'; } catch { /* sem filtro: sombra dura */ }
+    g.drawImage(img, pad, pad); g.filter = 'none'; g.globalCompositeOperation = 'source-in'; g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height);
+    c.pad = pad; this.shadows.set(img, c); return c;
+  }
   // tropa no mapa: figura pequena (tamanho fixo na tela) com uma etiqueta do país e o total em cima
-  drawToken(S, st, x, y, selected) {
+  drawToken(S, st, x, y, selected, armies = 1) {
     const g = this.g, P = S.opts.player, s = 1 / this.k * (this.k < 0.45 ? 0.85 : 1);
     const dom = stackDomain(st);
     let top = null, best = -1; for (const [u, e] of Object.entries(st.units)) { const v = e.n * UNITS[u].hp; if (v > best) { best = v; top = u; } }
@@ -384,9 +400,18 @@ export class MapView {
     const nc = st.nat === 'reb' ? '#3c3530' : NATION_BY_ID[st.nat].color;
     g.save(); g.translate(x, y);
     if (selected) { g.fillStyle = 'rgba(255,211,90,.5)'; g.beginPath(); g.ellipse(0, -1 * s, 13 * s, 4.5 * s, 0, 0, Math.PI * 2); g.fill(); }
-    g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(0, -1 * s, 8 * s, 2.6 * s, 0, 0, Math.PI * 2); g.fill();
     const img = this.art(icon, st.nat === 'reb' ? 'xx' : st.nat); let fh = 22 * s;
-    if (img.complete && img.naturalWidth) { const bw = (dom === 'land' && !embarked ? 22 : 34) * s, bh = 22 * s, f = Math.min(bw / img.naturalWidth, bh / img.naturalHeight); const w = img.naturalWidth * f; fh = img.naturalHeight * f; g.drawImage(img, -w / 2, -1 * s - fh, w, fh); }
+    if (img.complete && img.naturalWidth) {
+      const veh = !(dom === 'land' && !embarked && (UNITS[icon]?.cls === 'inf')), bw = (veh ? 34 : 22) * s, bh = (veh ? 24 : 22) * s, f = Math.min(bw / img.naturalWidth, bh / img.naturalHeight);
+      const w = img.naturalWidth * f; fh = img.naturalHeight * f;
+      // contato com o chão: mancha escura logo abaixo (mais larga em veículos)
+      const gr = g.createRadialGradient(0, 0, 0, 0, 0, w * 0.55); gr.addColorStop(0, 'rgba(0,0,0,.42)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.save(); g.scale(1, 0.32); g.fillStyle = gr; g.beginPath(); g.arc(0, -2 * s / 0.32, w * 0.55, 0, Math.PI * 2); g.fill(); g.restore();
+      // sombra projetada para trás e para a direita (luz vindo da frente-esquerda), achatada no chão
+      if (dom !== 'air') { const sh = this.shadowOf(img), pf = sh.pad * f; g.save(); g.globalAlpha = 0.3; g.transform(1, 0, -0.85, 0.36, 0, -1.5 * s); g.drawImage(sh, -w / 2 - pf, -fh - pf, w + pf * 2, fh + pf * 2); g.restore(); }
+      // figura com a base (rodas/pés) encostada no ponto
+      g.drawImage(img, -w / 2, -fh + 1 * s, w, fh);
+    }
     // etiqueta: faixa da cor do país + número, borda pela relação
     const n = stackCount(st), label = n > 999 ? '1k+' : String(n);
     g.font = `600 ${8.5 * s}px Oswald, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -398,6 +423,7 @@ export class MapView {
     const hp = stackHP(st); const f = hp.max ? hp.hp / hp.max : 0;
     if (f < 0.999) { g.fillStyle = '#111'; g.fillRect(-tw / 2, ty + 11.5 * s, tw, 2 * s); g.fillStyle = f > 0.6 ? '#7cc26a' : f > 0.3 ? '#e2b84a' : '#d9533c'; g.fillRect(-tw / 2, ty + 11.5 * s, tw * f, 2 * s); }
     if (st.fighting) { g.fillStyle = '#e0573e'; g.beginPath(); g.arc(tw / 2 + 2 * s, ty + 1 * s, 2.8 * s, 0, Math.PI * 2); g.fill(); }
+    if (armies > 1) { g.font = `600 ${7 * s}px Oswald, sans-serif`; const t2 = '×' + armies; g.fillStyle = 'rgba(28,24,20,.85)'; const w2 = g.measureText(t2).width + 5 * s; g.beginPath(); g.roundRect(-tw / 2 - w2 - 1 * s, ty + 1.5 * s, w2, 8 * s, 2 * s); g.fill(); g.fillStyle = '#f4efe2'; g.fillText(t2, -tw / 2 - w2 / 2 - 1 * s, ty + 5.6 * s); }
     g.restore();
   }
   // clique: pilha mais próxima em raio de 20px
